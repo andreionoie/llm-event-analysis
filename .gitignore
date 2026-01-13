@@ -1,0 +1,10 @@
+.DS_Store
+**/.idea
+**/*.tgz
+*.log
+*.tmp
+
+**/bin/
+**/build/
+.tilt/
+
