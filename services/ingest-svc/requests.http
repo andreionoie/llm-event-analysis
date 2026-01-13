@@ -1,0 +1,13 @@
+### JetBrains HTTP Client format
+### See: https://www.jetbrains.com/help/idea/http-client-in-product-code-editor.html
+
+@host = localhost:8080
+
+### Liveness
+GET http://{{host}}/healthz
+
+### Readyness
+GET http://{{host}}/readyz
+
+### Prometheus metrics
+GET http://{{host}}/metrics
