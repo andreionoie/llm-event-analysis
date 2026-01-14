@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "llm-event-analysis-apps.fullname" . }}-ingest
+  labels:
+    {{- include "llm-event-analysis-apps.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ingest
+spec:
+  replicas: {{ .Values.ingest.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "llm-event-analysis-apps.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ingest
+  template:
+    metadata:
+      labels:
+        {{- include "llm-event-analysis-apps.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ingest
+    spec:
+      containers:
+        - name: ingest
+          image: "{{ .Values.ingest.image.repository }}:{{ .Values.ingest.image.tag }}"
+          ports:
+            - name: http
+              containerPort: {{ .Values.ingest.containerPort }}
+          env:
+            - name: LOG_LEVEL
+              value: "{{ .Values.global.logLevel }}"
+            - name: PORT
+              value: "{{ .Values.ingest.containerPort }}"
+            - name: KAFKA_BROKERS
+              value: "{{ .Values.global.kafka.brokers }}"
+            - name: KAFKA_TOPIC
+              value: "events.raw"
+{{- with .Values.ingest.env }}
+{{- range $key, $value := . }}
+            - name: {{ $key }}
+              value: "{{ $value }}"
+{{- end }}
+{{- end }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+          resources:
+{{- toYaml .Values.ingest.resources | nindent 12 }}

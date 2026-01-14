@@ -1,0 +1,20 @@
+nameOverride: ""
+fullnameOverride: "lea"
+
+global:
+  logLevel: "debug"
+  kafka:
+    brokers: "redpanda.default.svc.cluster.local:9092"
+
+ingest:
+  replicaCount: 1
+  image:
+    repository: ingest-svc
+    tag: latest
+  containerPort: 8080
+  service:
+    port: 80
+    type: ClusterIP
+    annotations: {}
+  resources: {}
+  env: {}

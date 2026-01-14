@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: redpanda
+  labels:
+    release: lea-infra
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redpanda
+  endpoints:
+    - port: admin
+      path: /public_metrics
+      interval: 30s

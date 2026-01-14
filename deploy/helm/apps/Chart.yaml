@@ -1,0 +1,6 @@
+apiVersion: v2
+name: llm-event-analysis-apps
+description: Helm chart for the LLM event analysis platform services.
+type: application
+version: 0.0.1
+appVersion: "0.0.1"

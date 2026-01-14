@@ -40,6 +40,7 @@ func main() {
 
 	e := echo.New()
 	common.SetupEchoDefaults(e, "ingest-svc", s.handleHealth, s.handleReady)
+	e.POST("/events", s.handleIngest)
 	echoErrChan := make(chan error, 1)
 	go func() {
 		slog.Info("starting ingest service", "port", s.cfg.Port)
@@ -82,4 +83,9 @@ func (s *Server) handleReady(c echo.Context) error {
 	}
 
 	return c.NoContent(http.StatusOK)
+}
+
+func (s *Server) handleIngest(c echo.Context) error {
+	// TODO
+	return c.NoContent(http.StatusAccepted)
 }

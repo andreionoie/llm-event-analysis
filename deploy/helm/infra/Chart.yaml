@@ -1,0 +1,17 @@
+apiVersion: v2
+name: llm-event-analysis-infra
+description: Backing services for the LLM event analysis platform.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+
+dependencies:
+  - name: redpanda
+    version: "~5"
+    repository: https://charts.redpanda.com
+    condition: redpanda.enabled
+
+  - name: kube-prometheus-stack
+    version: "~80"
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: monitoring.enabled
