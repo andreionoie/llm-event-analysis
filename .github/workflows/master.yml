@@ -1,3 +1,14 @@
+name: Static code analysis
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
 jobs:
   detect-modules:
     runs-on: ubuntu-latest
