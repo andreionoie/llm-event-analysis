@@ -13,38 +13,62 @@ import (
 
 	"github.com/andreionoie/llm-event-analysis/pkg/common"
 	"github.com/labstack/echo/v4"
+	"github.com/twmb/franz-go/pkg/kgo"
 )
 
 type Config struct {
-	Port string
+	Port         string
+	KafkaBrokers []string
+	KafkaTopic   string
 }
 
 func loadConfig() Config {
 	return Config{
-		Port: common.GetenvOrDefault("PORT", "8080"),
+		Port:         common.GetenvOrDefault("PORT", "8080"),
+		KafkaBrokers: common.SplitCommaSeparated(common.RequireEnv("KAFKA_BROKERS")),
+		KafkaTopic:   common.RequireEnv("KAFKA_TOPIC"),
 	}
 }
 
 // Server state
 type Server struct {
-	cfg   Config
-	ready atomic.Bool
+	cfg          Config
+	ready        atomic.Bool
+	shuttingDown atomic.Bool
+	producer     *kgo.Client
 }
 
 func main() {
-	common.InitSlog()
+	logLevel := common.InitSlog()
 
 	s := &Server{
 		cfg: loadConfig(),
 	}
+	kafkaLogLevel := common.KgoLogLevelFromString(logLevel)
+	producer, err := kgo.NewClient(
+		kgo.SeedBrokers(s.cfg.KafkaBrokers...),
+		kgo.WithLogger(common.NewKgoSlogLogger(slog.Default().With("component", "kafka"), kafkaLogLevel)),
+		kgo.ProducerBatchMaxBytes(1000*1000),     // 1000KB batch max; TODO: configurable
+		kgo.ProducerLinger(100*time.Millisecond), // time interval for accumulating batches; TODO: configurable
+	)
+	if err != nil {
+		slog.Error("failed to create kafka client", "error", err)
+		os.Exit(1)
+	}
+	defer producer.Close()
+	s.producer = producer
+	// periodic kafka liveness check
+	go common.StartKafkaHealthCheck(context.Background(), producer, &s.ready)
 
 	e := echo.New()
 	common.SetupEchoDefaults(e, "ingest-svc", s.handleHealth, s.handleReady)
+
+	// endpoints
 	e.POST("/events", s.handleIngest)
+
 	echoErrChan := make(chan error, 1)
 	go func() {
 		slog.Info("starting ingest service", "port", s.cfg.Port)
-		s.ready.Store(true)
 		if err := e.Start(":" + s.cfg.Port); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			echoErrChan <- err
 		}
@@ -61,6 +85,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	s.shuttingDown.Store(true)
 	s.ready.Store(false)
 	time.Sleep(5 * time.Second)
 
@@ -83,9 +108,4 @@ func (s *Server) handleReady(c echo.Context) error {
 	}
 
 	return c.NoContent(http.StatusOK)
-}
-
-func (s *Server) handleIngest(c echo.Context) error {
-	// TODO
-	return c.NoContent(http.StatusAccepted)
 }

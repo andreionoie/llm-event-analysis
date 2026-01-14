@@ -15,4 +15,23 @@ GET http://{{host}}/metrics
 
 ### Single event ingestion
 POST http://{{host}}/events
+Content-Type: application/json
 
+{
+  "source": "win32-kernel-sensor",
+  "severity": "high",
+  "type": "detection",
+  "payload": {
+    "event_type": "BehavioralSuspiciousProcess",
+    "detection_id": "ldt:9c0f1a2b3c4d5e6f",
+    "device_id": "device-7f3b2c1a",
+    "host": "WIN-7Q3P9M2Q",
+    "username": "ACME\\\\jdoe",
+    "process_name": "rundll32.exe",
+    "command_line": "rundll32.exe C:\\\\Windows\\\\System32\\\\shell32.dll,Control_RunDLL",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tactic": "Defense Evasion",
+    "technique": "T1218 - Signed Binary Proxy Execution",
+    "severity": "high"
+  }
+}
