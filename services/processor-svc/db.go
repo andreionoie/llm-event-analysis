@@ -11,21 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var eventsSchema = []string{
-	`CREATE TABLE IF NOT EXISTS events (
-		id          TEXT PRIMARY KEY,
-		timestamp   TIMESTAMPTZ NOT NULL,
-		source      TEXT NOT NULL,
-		severity    SMALLINT NOT NULL,
-		event_type  TEXT NOT NULL,
-		payload     JSONB NOT NULL DEFAULT '{}',
-		created_at  TIMESTAMPTZ DEFAULT NOW()
-	)`,
-	`CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp DESC)`,
-	`CREATE INDEX IF NOT EXISTS idx_events_severity ON events(severity) WHERE severity >= 2`,
-	`CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)`,
-}
-
 func connectDBWithRetry(ctx context.Context, databaseURL string, attempts int, delay time.Duration) (*pgxpool.Pool, error) {
 	var lastErr error
 	for i := 0; i < attempts; i++ {
@@ -62,15 +47,6 @@ func connectDB(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 	return db, nil
-}
-
-func ensureSchema(ctx context.Context, db *pgxpool.Pool) error {
-	for _, stmt := range eventsSchema {
-		if _, err := db.Exec(ctx, stmt); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (s *Server) insertEvent(ctx context.Context, event *common.Event) error {

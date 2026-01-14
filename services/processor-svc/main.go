@@ -55,8 +55,8 @@ func main() {
 		os.Exit(1)
 	}
 	defer db.Close()
-	if err := ensureSchema(context.Background(), db); err != nil {
-		slog.Error("failed to ensure database schema", "error", err)
+	if err := runMigrations(db); err != nil {
+		slog.Error("failed to run database migrations", "error", err)
 		os.Exit(1)
 	}
 	s.db = db
