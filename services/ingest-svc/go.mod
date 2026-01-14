@@ -1,6 +1,6 @@
 module github.com/andreionoie/llm-event-analysis/services/ingest-svc
 
-go 1.25.5
+go 1.24
 
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
