@@ -49,7 +49,7 @@ func main() {
 	s := &Server{
 		cfg: loadConfig(),
 	}
-	db, err := connectDBWithRetry(context.Background(), s.cfg.DatabaseURL, logLevel, 10, 3*time.Second)
+	db, err := common.ConnectPGXPoolWithRetry(context.Background(), s.cfg.DatabaseURL, logLevel, 10, 3*time.Second)
 	if err != nil {
 		slog.Error("failed to connect to database", "error", err)
 		os.Exit(1)

@@ -1,0 +1,27 @@
+### JetBrains HTTP Client format
+### See: https://www.jetbrains.com/help/idea/http-client-in-product-code-editor.html
+
+#@host = localhost:8080
+@host = lea-analyzer.default.svc.cluster.local
+
+### Liveness
+GET http://{{host}}/healthz
+
+### Readyness
+GET http://{{host}}/readyz
+
+### Prometheus metrics
+GET http://{{host}}/metrics
+
+### Analyze events
+POST http://{{host}}/analyze
+Content-Type: application/json
+
+{
+  "question": "Are there any harmful or malicious executions? What are the implications?",
+  "time_range": {
+    "start": "2026-01-01T00:00:00Z",
+    "end": "2027-01-01T00:00:00Z"
+  },
+  "max_events": 50
+}

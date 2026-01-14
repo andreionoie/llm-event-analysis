@@ -1,42 +1,44 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "llm-event-analysis-apps.fullname" . }}-processor
+  name: {{ include "llm-event-analysis-apps.fullname" . }}-analyzer
   labels:
     {{- include "llm-event-analysis-apps.labels" . | nindent 4 }}
-    app.kubernetes.io/component: processor
+    app.kubernetes.io/component: analyzer
 spec:
-  replicas: {{ .Values.processor.replicaCount }}
+  replicas: {{ .Values.analyzer.replicaCount }}
   selector:
     matchLabels:
       {{- include "llm-event-analysis-apps.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: processor
+      app.kubernetes.io/component: analyzer
   template:
     metadata:
       labels:
         {{- include "llm-event-analysis-apps.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: processor
+        app.kubernetes.io/component: analyzer
     spec:
       containers:
-        - name: processor
-          image: "{{ .Values.processor.image.repository }}:{{ .Values.processor.image.tag }}"
+        - name: analyzer
+          image: "{{ .Values.analyzer.image.repository }}:{{ .Values.analyzer.image.tag }}"
           ports:
             - name: http
-              containerPort: {{ .Values.processor.containerPort }}
+              containerPort: {{ .Values.analyzer.containerPort }}
           env:
             - name: LOG_LEVEL
               value: "{{ .Values.global.logLevel }}"
             - name: PORT
-              value: "{{ .Values.processor.containerPort }}"
-            - name: KAFKA_BROKERS
-              value: "{{ .Values.global.kafka.brokers }}"
-            - name: KAFKA_TOPIC
-              value: "{{ .Values.global.kafka.topics.raw }}"
-            - name: KAFKA_CONSUMER_GROUP
-              value: "{{ .Values.processor.kafkaConsumerGroup }}"
+              value: "{{ .Values.analyzer.containerPort }}"
+            - name: ANALYZER_MAX_EVENTS
+              value: "{{ .Values.analyzer.maxEvents }}"
+            - name: GEMINI_MODEL
+              value: "{{ .Values.analyzer.geminiModel }}"
             - name: DATABASE_URL
               value: "{{ .Values.global.database.url }}"
-{{- with .Values.processor.env }}
+{{- if .Values.analyzer.geminiApiKey }}
+            - name: GEMINI_API_KEY
+              value: "{{ .Values.analyzer.geminiApiKey }}"
+{{- end }}
+{{- with .Values.analyzer.env }}
 {{- range $key, $value := . }}
             - name: {{ $key }}
               value: "{{ $value }}"
@@ -53,4 +55,4 @@ spec:
               port: http
             initialDelaySeconds: 5
           resources:
-{{- toYaml .Values.processor.resources | nindent 12 }}
+{{- toYaml .Values.analyzer.resources | nindent 12 }}

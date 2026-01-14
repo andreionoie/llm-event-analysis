@@ -1,6 +1,6 @@
 APPS_CHART_DIR = 'deploy/helm/apps'
 INFRA_CHART_DIR = 'deploy/helm/infra'
-SERVICES = ['ingest', 'processor']
+SERVICES = ['ingest', 'processor', 'analyzer']
 
 k8s_yaml(helm(
   APPS_CHART_DIR,
@@ -16,6 +16,7 @@ k8s_yaml(helm(
 
 docker_build('ingest-svc', '.', dockerfile='services/ingest-svc/Dockerfile')
 docker_build('processor-svc', '.', dockerfile='services/processor-svc/Dockerfile')
+docker_build('analyzer-svc', '.', dockerfile='services/analyzer-svc/Dockerfile')
 
 for svc in SERVICES:
   k8s_resource('lea-%s' % svc, labels=['services'])
