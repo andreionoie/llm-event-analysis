@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "llm-event-analysis-apps.fullname" . }}-processor
+  labels:
+    {{- include "llm-event-analysis-apps.labels" . | nindent 4 }}
+    app.kubernetes.io/component: processor
+    echoprometheus-enabled: "true"
+  {{- with .Values.processor.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.processor.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.processor.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "llm-event-analysis-apps.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: processor

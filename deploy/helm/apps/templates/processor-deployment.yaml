@@ -1,38 +1,40 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "llm-event-analysis-apps.fullname" . }}-ingest
+  name: {{ include "llm-event-analysis-apps.fullname" . }}-processor
   labels:
     {{- include "llm-event-analysis-apps.labels" . | nindent 4 }}
-    app.kubernetes.io/component: ingest
+    app.kubernetes.io/component: processor
 spec:
-  replicas: {{ .Values.ingest.replicaCount }}
+  replicas: {{ .Values.processor.replicaCount }}
   selector:
     matchLabels:
       {{- include "llm-event-analysis-apps.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: ingest
+      app.kubernetes.io/component: processor
   template:
     metadata:
       labels:
         {{- include "llm-event-analysis-apps.selectorLabels" . | nindent 8 }}
-        app.kubernetes.io/component: ingest
+        app.kubernetes.io/component: processor
     spec:
       containers:
-        - name: ingest
-          image: "{{ .Values.ingest.image.repository }}:{{ .Values.ingest.image.tag }}"
+        - name: processor
+          image: "{{ .Values.processor.image.repository }}:{{ .Values.processor.image.tag }}"
           ports:
             - name: http
-              containerPort: {{ .Values.ingest.containerPort }}
+              containerPort: {{ .Values.processor.containerPort }}
           env:
             - name: LOG_LEVEL
               value: "{{ .Values.global.logLevel }}"
             - name: PORT
-              value: "{{ .Values.ingest.containerPort }}"
+              value: "{{ .Values.processor.containerPort }}"
             - name: KAFKA_BROKERS
               value: "{{ .Values.global.kafka.brokers }}"
             - name: KAFKA_TOPIC
               value: "{{ .Values.global.kafka.topics.raw }}"
-{{- with .Values.ingest.env }}
+            - name: KAFKA_CONSUMER_GROUP
+              value: "{{ .Values.processor.kafkaConsumerGroup }}"
+{{- with .Values.processor.env }}
 {{- range $key, $value := . }}
             - name: {{ $key }}
               value: "{{ $value }}"
@@ -49,4 +51,4 @@ spec:
               port: http
             initialDelaySeconds: 5
           resources:
-{{- toYaml .Values.ingest.resources | nindent 12 }}
+{{- toYaml .Values.processor.resources | nindent 12 }}

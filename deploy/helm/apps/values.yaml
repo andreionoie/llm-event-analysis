@@ -5,6 +5,9 @@ global:
   logLevel: "debug"
   kafka:
     brokers: "redpanda.default.svc.cluster.local:9092"
+    topics:
+      raw: "events.raw"
+      dlq: "events.dlq"
 
 ingest:
   replicaCount: 1
@@ -16,5 +19,19 @@ ingest:
     port: 80
     type: ClusterIP
     annotations: {}
+  resources: {}
+  env: {}
+
+processor:
+  replicaCount: 1
+  image:
+    repository: processor-svc
+    tag: latest
+  containerPort: 8080
+  service:
+    port: 80
+    type: ClusterIP
+    annotations: {}
+  kafkaConsumerGroup: processor-svc
   resources: {}
   env: {}

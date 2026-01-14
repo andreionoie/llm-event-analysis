@@ -55,7 +55,7 @@ func (e *Event) Validate() error {
 
 func (e *Event) Enrich() {
 	if strings.TrimSpace(e.Id) == "" {
-		e.Id = randomHexStr(32)
+		e.Id = randomHexStr(10)
 	}
 
 	if e.Timestamp.IsZero() {
