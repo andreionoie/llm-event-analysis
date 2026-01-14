@@ -4,7 +4,7 @@ fullnameOverride: "lea"
 global:
   logLevel: "debug"
   kafka:
-    brokers: "redpanda.default.svc.cluster.local:9092"
+    brokers: "lea-infra-redpanda.default.svc.cluster.local:9092"
     topics:
       raw: "events.raw"
       dlq: "events.dlq"
@@ -33,5 +33,6 @@ processor:
     type: ClusterIP
     annotations: {}
   kafkaConsumerGroup: processor-svc
+  databaseUrl: "postgres://app:apppassword@lea-infra-postgresql:5432/appdb?sslmode=disable"
   resources: {}
   env: {}

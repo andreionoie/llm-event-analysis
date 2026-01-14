@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/andreionoie/llm-event-analysis/pkg/common"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
@@ -21,6 +22,7 @@ type Config struct {
 	KafkaBrokers       []string
 	KafkaTopic         string
 	KafkaConsumerGroup string
+	DatabaseURL        string
 }
 
 func loadConfig() Config {
@@ -29,6 +31,7 @@ func loadConfig() Config {
 		KafkaBrokers:       common.SplitCommaSeparated(common.RequireEnv("KAFKA_BROKERS")),
 		KafkaTopic:         common.RequireEnv("KAFKA_TOPIC"),
 		KafkaConsumerGroup: common.GetenvOrDefault("KAFKA_CONSUMER_GROUP", "processor-svc"),
+		DatabaseURL:        common.RequireEnv("DATABASE_URL"),
 	}
 }
 
@@ -37,6 +40,7 @@ type Server struct {
 	cfg      Config
 	ready    atomic.Bool
 	consumer *kgo.Client
+	db       *pgxpool.Pool
 }
 
 func main() {
@@ -45,12 +49,25 @@ func main() {
 	s := &Server{
 		cfg: loadConfig(),
 	}
+	db, err := connectDBWithRetry(context.Background(), s.cfg.DatabaseURL, 10, 3*time.Second)
+	if err != nil {
+		slog.Error("failed to connect to database", "error", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+	if err := ensureSchema(context.Background(), db); err != nil {
+		slog.Error("failed to ensure database schema", "error", err)
+		os.Exit(1)
+	}
+	s.db = db
+
 	kafkaLogLevel := common.KgoLogLevelFromString(logLevel)
 	consumer, err := kgo.NewClient(
 		kgo.SeedBrokers(s.cfg.KafkaBrokers...),
 		kgo.WithLogger(common.NewKgoSlogLogger(slog.Default().With("component", "kafka"), kafkaLogLevel)),
 		kgo.ConsumerGroup(s.cfg.KafkaConsumerGroup),
 		kgo.ConsumeTopics(s.cfg.KafkaTopic),
+		kgo.DisableAutoCommit(),
 		// smarter readiness checks than a basic brokers ping
 		kgo.OnPartitionsAssigned(func(ctx context.Context, cl *kgo.Client, assigned map[string][]int32) {
 			if s.ready.CompareAndSwap(false, true) {

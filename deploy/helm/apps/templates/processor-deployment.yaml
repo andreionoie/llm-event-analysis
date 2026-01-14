@@ -34,6 +34,10 @@ spec:
               value: "{{ .Values.global.kafka.topics.raw }}"
             - name: KAFKA_CONSUMER_GROUP
               value: "{{ .Values.processor.kafkaConsumerGroup }}"
+{{- if .Values.processor.databaseUrl }}
+            - name: DATABASE_URL
+              value: "{{ .Values.processor.databaseUrl }}"
+{{- end }}
 {{- with .Values.processor.env }}
 {{- range $key, $value := . }}
             - name: {{ $key }}
