@@ -32,6 +32,14 @@ func (l *KgoSlogLogger) Log(level kgo.LogLevel, msg string, keyvals ...any) {
 		return
 	}
 
+	// skip uninteresting logs
+	var ignorePatterns = []string{"heartbeat", "Heartbeat", "Metadata v8", "Fetch v11"}
+	for _, pattern := range ignorePatterns {
+		if strings.Contains(msg, pattern) {
+			return
+		}
+	}
+
 	slogLevel := slog.LevelInfo
 	switch level {
 	case kgo.LogLevelDebug:

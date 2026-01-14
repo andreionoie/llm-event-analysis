@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -9,27 +10,15 @@ import (
 
 	"github.com/andreionoie/llm-event-analysis/pkg/common"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 )
 
-var eventsSchema = []string{
-	`CREATE TABLE IF NOT EXISTS events (
-		id          TEXT PRIMARY KEY,
-		timestamp   TIMESTAMPTZ NOT NULL,
-		source      TEXT NOT NULL,
-		severity    SMALLINT NOT NULL,
-		event_type  TEXT NOT NULL,
-		payload     JSONB NOT NULL DEFAULT '{}',
-		created_at  TIMESTAMPTZ DEFAULT NOW()
-	)`,
-	`CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp DESC)`,
-	`CREATE INDEX IF NOT EXISTS idx_events_severity ON events(severity) WHERE severity >= 2`,
-	`CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)`,
-}
-
-func connectDBWithRetry(ctx context.Context, databaseURL string, attempts int, delay time.Duration) (*pgxpool.Pool, error) {
+func connectDBWithRetry(ctx context.Context, databaseURL string, logLevel string, attempts int, delay time.Duration) (*pgxpool.Pool, error) {
 	var lastErr error
 	for i := 0; i < attempts; i++ {
-		db, err := connectDB(ctx, databaseURL)
+		db, err := connectDB(ctx, databaseURL, logLevel)
 		if err == nil {
 			return db, nil
 		}
@@ -45,11 +34,12 @@ func connectDBWithRetry(ctx context.Context, databaseURL string, attempts int, d
 	return nil, lastErr
 }
 
-func connectDB(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
+func connectDB(ctx context.Context, databaseURL string, logLevel string) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, err
 	}
+	cfg.ConnConfig.Tracer = common.NewPgxTracer(logLevel)
 	db, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -62,15 +52,6 @@ func connectDB(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 		return nil, err
 	}
 	return db, nil
-}
-
-func ensureSchema(ctx context.Context, db *pgxpool.Pool) error {
-	for _, stmt := range eventsSchema {
-		if _, err := db.Exec(ctx, stmt); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (s *Server) insertEvent(ctx context.Context, event *common.Event) error {
@@ -100,4 +81,10 @@ func (s *Server) insertEvent(ctx context.Context, event *common.Event) error {
 		payloadJSON,
 	)
 	return err
+}
+
+func registerDBMetrics(db *pgxpool.Pool) (*sql.DB, error) {
+	sqlDB := stdlib.OpenDBFromPool(db)
+	prometheus.MustRegister(collectors.NewDBStatsCollector(sqlDB, "processor_db"))
+	return sqlDB, nil
 }
