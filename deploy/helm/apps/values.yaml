@@ -8,6 +8,8 @@ global:
     topics:
       raw: "events.raw"
       dlq: "events.dlq"
+  database:
+    url: "postgres://app:apppassword@lea-infra-postgresql.default.svc.cluster.local:5432/appdb?sslmode=disable"
 
 ingest:
   replicaCount: 1
@@ -33,6 +35,24 @@ processor:
     type: ClusterIP
     annotations: {}
   kafkaConsumerGroup: processor-svc
-  databaseUrl: "postgres://app:apppassword@lea-infra-postgresql:5432/appdb?sslmode=disable"
   resources: {}
   env: {}
+
+analyzer:
+  replicaCount: 1
+  image:
+    repository: analyzer-svc
+    tag: latest
+  containerPort: 8080
+  service:
+    port: 80
+    type: ClusterIP
+    annotations: {}
+  # override after deployment with `kubectl set env deployment/lea-analyzer GEMINI_API_KEY=<secret-key>`
+  geminiApiKey: ""
+  geminiModel: "gemini-3-flash-preview"
+  maxEvents: 100
+  resources: {}
+  env:
+    # account for inference latency
+    WRITE_TIMEOUT_SECONDS: "120"
