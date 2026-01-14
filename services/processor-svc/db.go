@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -9,12 +10,15 @@ import (
 
 	"github.com/andreionoie/llm-event-analysis/pkg/common"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 )
 
-func connectDBWithRetry(ctx context.Context, databaseURL string, attempts int, delay time.Duration) (*pgxpool.Pool, error) {
+func connectDBWithRetry(ctx context.Context, databaseURL string, logLevel string, attempts int, delay time.Duration) (*pgxpool.Pool, error) {
 	var lastErr error
 	for i := 0; i < attempts; i++ {
-		db, err := connectDB(ctx, databaseURL)
+		db, err := connectDB(ctx, databaseURL, logLevel)
 		if err == nil {
 			return db, nil
 		}
@@ -30,11 +34,12 @@ func connectDBWithRetry(ctx context.Context, databaseURL string, attempts int, d
 	return nil, lastErr
 }
 
-func connectDB(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
+func connectDB(ctx context.Context, databaseURL string, logLevel string) (*pgxpool.Pool, error) {
 	cfg, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, err
 	}
+	cfg.ConnConfig.Tracer = common.NewPgxTracer(logLevel)
 	db, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -76,4 +81,10 @@ func (s *Server) insertEvent(ctx context.Context, event *common.Event) error {
 		payloadJSON,
 	)
 	return err
+}
+
+func registerDBMetrics(db *pgxpool.Pool) (*sql.DB, error) {
+	sqlDB := stdlib.OpenDBFromPool(db)
+	prometheus.MustRegister(collectors.NewDBStatsCollector(sqlDB, "processor_db"))
+	return sqlDB, nil
 }

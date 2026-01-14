@@ -49,7 +49,7 @@ func main() {
 	s := &Server{
 		cfg: loadConfig(),
 	}
-	db, err := connectDBWithRetry(context.Background(), s.cfg.DatabaseURL, 10, 3*time.Second)
+	db, err := connectDBWithRetry(context.Background(), s.cfg.DatabaseURL, logLevel, 10, 3*time.Second)
 	if err != nil {
 		slog.Error("failed to connect to database", "error", err)
 		os.Exit(1)
@@ -60,6 +60,16 @@ func main() {
 		os.Exit(1)
 	}
 	s.db = db
+	sqlDB, err := registerDBMetrics(db)
+	if err != nil {
+		slog.Error("failed to register database metrics", "error", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := sqlDB.Close(); err != nil {
+			slog.Warn("failed to close sql db", "error", err)
+		}
+	}()
 
 	kafkaLogLevel := common.KgoLogLevelFromString(logLevel)
 	consumer, err := kgo.NewClient(
