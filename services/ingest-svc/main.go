@@ -12,9 +12,7 @@ import (
 	"time"
 
 	"github.com/andreionoie/llm-event-analysis/pkg/common"
-	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 )
 
 type Config struct {
@@ -22,13 +20,8 @@ type Config struct {
 }
 
 func loadConfig() Config {
-	port := "8080"
-	if envPort := os.Getenv("PORT"); envPort != "" {
-		port = envPort
-	}
-
 	return Config{
-		Port: port,
+		Port: common.GetenvOrDefault("PORT", "8080"),
 	}
 }
 
@@ -39,44 +32,14 @@ type Server struct {
 }
 
 func main() {
-	common.InitSlog(os.Getenv("LOG_LEVEL"))
+	common.InitSlog()
 
-	s := &Server{}
-	s.cfg = loadConfig()
+	s := &Server{
+		cfg: loadConfig(),
+	}
 
 	e := echo.New()
-	e.Server.ReadHeaderTimeout = 2 * time.Second
-	e.Server.ReadTimeout = 5 * time.Second
-	e.Server.WriteTimeout = 10 * time.Second
-	e.Server.IdleTimeout = 2 * time.Minute
-	e.Use(middleware.Recover())
-	e.Use(middleware.BodyLimit("16M"))
-	e.Use(echoprometheus.NewMiddleware("ingest_service"))
-	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
-		LogStatus:   true,
-		LogURI:      true,
-		LogError:    true,
-		LogMethod:   true,
-		LogLatency:  true,
-		HandleError: true,
-		LogValuesFunc: func(c echo.Context, v middleware.RequestLoggerValues) error {
-			//if v.URI == "/healthz" || v.URI == "/readyz" {
-			//	return nil
-			//}
-
-			if v.Error != nil {
-				slog.Error("request", "method", v.Method, "uri", v.URI, "status", v.Status, "latency", v.Latency, "error", v.Error)
-			} else {
-				slog.Info("request", "method", v.Method, "uri", v.URI, "status", v.Status, "latency", v.Latency)
-			}
-			return nil
-		},
-	}))
-
-	e.GET("/healthz", s.handleHealth)
-	e.GET("/readyz", s.handleReady)
-	e.GET("/metrics", echoprometheus.NewHandler())
-
+	common.SetupEchoDefaults(e, s.handleHealth, s.handleReady)
 	echoErrChan := make(chan error, 1)
 	go func() {
 		slog.Info("starting ingest service", "port", s.cfg.Port)
