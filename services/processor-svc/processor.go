@@ -20,6 +20,7 @@ func (s *Server) consume(ctx context.Context) {
 			if errors.Is(err, context.Canceled) || errors.Is(err, kgo.ErrClientClosed) {
 				return
 			}
+			slog.Warn("kafka fetch error", "error", err)
 		}
 
 		fetches.EachError(func(topic string, partition int32, err error) {
