@@ -46,7 +46,7 @@ func (e *Event) Validate() error {
 	if source := strings.TrimSpace(e.Source); source == "" {
 		return fmt.Errorf("source is a required field")
 	}
-	if eventType := strings.TrimSpace(e.Source); eventType == "" {
+	if eventType := strings.TrimSpace(e.Type); eventType == "" {
 		return fmt.Errorf("type is a required field")
 	}
 
