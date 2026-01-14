@@ -30,22 +30,45 @@ func (s *Server) consume(ctx context.Context) {
 			slog.Warn("kafka fetch error", "error", err, "topic", topic, "partition", partition)
 		})
 
-		fetches.EachRecord(func(record *kgo.Record) {
-			s.handleRecord(record)
-		})
+		iter := fetches.RecordIter()
+		for !iter.Done() {
+			record := iter.Next()
+			if !s.handleRecord(ctx, record) {
+				break
+			}
+			if err := s.consumer.CommitRecords(ctx, record); err != nil {
+				if !errors.Is(err, context.Canceled) {
+					slog.Error("failed to commit offset", "error", err, "topic", record.Topic, "partition", record.Partition, "offset", record.Offset)
+				}
+				break
+			}
+		}
 	}
 }
 
-func (s *Server) handleRecord(record *kgo.Record) {
+func (s *Server) handleRecord(ctx context.Context, record *kgo.Record) bool {
 	var event common.Event
 	if err := json.Unmarshal(record.Value, &event); err != nil {
 		slog.Warn("failed to decode event", "error", err, "topic", record.Topic, "partition", record.Partition, "offset", record.Offset)
-		return
+		return true
 	}
 
+	event.Enrich()
 	if err := event.Validate(); err != nil {
 		slog.Warn("invalid event", "error", err, "event_id", event.Id, "topic", record.Topic, "partition", record.Partition, "offset", record.Offset)
-		return
+		return true
+	}
+
+	if err := s.insertEvent(ctx, &event); err != nil {
+		slog.Error(
+			"failed to insert event",
+			"error", err,
+			"event_id", event.Id,
+			"topic", record.Topic,
+			"partition", record.Partition,
+			"offset", record.Offset,
+		)
+		return false
 	}
 
 	slog.Info(
@@ -59,4 +82,5 @@ func (s *Server) handleRecord(record *kgo.Record) {
 		"partition", record.Partition,
 		"offset", record.Offset,
 	)
+	return true
 }
