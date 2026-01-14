@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -14,6 +16,7 @@ import (
 	"github.com/andreionoie/llm-event-analysis/pkg/common"
 	"github.com/labstack/echo/v4"
 	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/franz-go/pkg/kmsg"
 )
 
 type Config struct {
@@ -58,7 +61,7 @@ func main() {
 	defer producer.Close()
 	s.producer = producer
 	// periodic kafka liveness check
-	go common.StartKafkaHealthCheck(context.Background(), producer, &s.ready)
+	go startKafkaBrokersHealthCheck(context.Background(), producer, &s.ready)
 
 	e := echo.New()
 	common.SetupEchoDefaults(e, "ingest-svc", s.handleHealth, s.handleReady)
@@ -108,4 +111,52 @@ func (s *Server) handleReady(c echo.Context) error {
 	}
 
 	return c.NoContent(http.StatusOK)
+}
+
+func startKafkaBrokersHealthCheck(ctx context.Context, kafkaClient *kgo.Client, ready *atomic.Bool) {
+	check := func() {
+		pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+
+		err := kafkaClient.Ping(pingCtx)
+		if err != nil {
+			if ready.CompareAndSwap(true, false) {
+				slog.Warn("kafka not reachable", "error", err, "brokers", getBrokers(pingCtx, kafkaClient))
+			}
+		} else {
+			if ready.CompareAndSwap(false, true) {
+
+				slog.Info("kafka connection established", "brokers", getBrokers(pingCtx, kafkaClient))
+			}
+		}
+	}
+
+	check()
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			check()
+		}
+	}
+}
+
+func getBrokers(ctx context.Context, kafkaClient *kgo.Client) []string {
+	req := kmsg.NewMetadataRequest()
+	md, mdErr := kafkaClient.RequestCachedMetadata(ctx, &req, 0)
+
+	var brokerList []string
+	if mdErr == nil {
+		for _, b := range md.Brokers {
+			addr := net.JoinHostPort(b.Host, strconv.Itoa(int(b.Port)))
+			brokerList = append(brokerList, addr)
+		}
+	}
+
+	return brokerList
 }

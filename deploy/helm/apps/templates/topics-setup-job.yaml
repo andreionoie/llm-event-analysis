@@ -39,25 +39,25 @@ spec:
 
               echo "Creating Kafka topics..."
 
-              # Topic: events.raw
+              # Topic: {{ .Values.global.kafka.topics.raw }}
               # Main ingestion topic - partitioned for parallel processing
-              rpk topic create events.raw \
+              rpk topic create {{ .Values.global.kafka.topics.raw }} \
                 --brokers "${BROKERS}" \
                 --partitions 3 \
                 --replicas 1 \
                 --config retention.ms=604800000 \
                 --config cleanup.policy=delete \
-                || echo "Topic events.raw may already exist"
+                || echo "Topic {{ .Values.global.kafka.topics.raw }} may already exist"
 
-              # Topic: events.dlq
+              # Topic: {{ .Values.global.kafka.topics.dlq }}
               # Dead letter queue for failed events
-              rpk topic create events.dlq \
+              rpk topic create {{ .Values.global.kafka.topics.dlq }} \
                 --brokers "${BROKERS}" \
                 --partitions 1 \
                 --replicas 1 \
                 --config retention.ms=2592000000 \
                 --config cleanup.policy=delete \
-                || echo "Topic events.dlq may already exist"
+                || echo "Topic {{ .Values.global.kafka.topics.dlq }} may already exist"
 
               echo "Topic setup complete"
               rpk topic list --brokers "${BROKERS}"

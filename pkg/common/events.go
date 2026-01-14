@@ -55,7 +55,7 @@ func (e *Event) Validate() error {
 
 func (e *Event) Enrich() {
 	if strings.TrimSpace(e.Id) == "" {
-		e.Id = randomHexStr(32)
+		e.Id = randomHexStr(10)
 	}
 
 	if e.Timestamp.IsZero() {
@@ -65,6 +65,9 @@ func (e *Event) Enrich() {
 
 func randomHexStr(len int) string {
 	key := make([]byte, len)
-	rand.Read(key)
+	_, err := rand.Read(key)
+	if err != nil {
+		panic("failed to generate random key. this should never happen")
+	}
 	return hex.EncodeToString(key)
 }
