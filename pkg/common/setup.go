@@ -3,6 +3,7 @@ package common
 import (
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,14 +51,28 @@ func GetenvOrDefault(key, defaultValue string) string {
 	return defaultValue
 }
 
-func SetupEchoDefaults(e *echo.Echo, healthHandler echo.HandlerFunc, readyHandler echo.HandlerFunc) {
-	e.Server.ReadHeaderTimeout = 2 * time.Second
-	e.Server.ReadTimeout = 5 * time.Second
-	e.Server.WriteTimeout = 10 * time.Second
-	e.Server.IdleTimeout = 2 * time.Minute
+func GetenvOrDefaultInt(key, defaultValue string) int {
+	strValue := GetenvOrDefault(key, defaultValue)
+	out, err := strconv.Atoi(strValue)
+	if err != nil {
+		slog.Error("invalid environment variable value", "key", key, "value", strValue, "error", err)
+	}
+	return out
+}
+
+func SetupEchoDefaults(e *echo.Echo, subsystem string, healthHandler echo.HandlerFunc, readyHandler echo.HandlerFunc) {
+	e.Server.ReadHeaderTimeout = time.Second * time.Duration(
+		GetenvOrDefaultInt("READ_HEADER_TIMEOUT_SECONDS", "2"))
+	e.Server.ReadTimeout = time.Second * time.Duration(
+		GetenvOrDefaultInt("READ_TIMEOUT_SECONDS", "5"))
+	e.Server.WriteTimeout = time.Second * time.Duration(
+		GetenvOrDefaultInt("WRITE_TIMEOUT_SECONDS", "10"))
+	e.Server.IdleTimeout = time.Second * time.Duration(
+		GetenvOrDefaultInt("IDLE_TIMEOUT_SECONDS", "120"))
+
 	e.Use(middleware.Recover())
-	e.Use(middleware.BodyLimit("16M"))
-	e.Use(echoprometheus.NewMiddleware("ingest_service"))
+	e.Use(middleware.BodyLimit(GetenvOrDefault("MAX_REQUEST_SIZE_MB", "64") + "MB"))
+	e.Use(echoprometheus.NewMiddleware(subsystem))
 	e.Use(middleware.RequestLoggerWithConfig(middleware.RequestLoggerConfig{
 		LogStatus:   true,
 		LogURI:      true,

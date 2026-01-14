@@ -39,7 +39,7 @@ func main() {
 	}
 
 	e := echo.New()
-	common.SetupEchoDefaults(e, s.handleHealth, s.handleReady)
+	common.SetupEchoDefaults(e, "ingest-svc", s.handleHealth, s.handleReady)
 	echoErrChan := make(chan error, 1)
 	go func() {
 		slog.Info("starting ingest service", "port", s.cfg.Port)
