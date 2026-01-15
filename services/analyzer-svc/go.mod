@@ -7,6 +7,7 @@ require (
 	github.com/jackc/pgx/v5 v5.8.0
 	github.com/labstack/echo/v4 v4.15.0
 	google.golang.org/genai v1.41.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (

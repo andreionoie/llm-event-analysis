@@ -21,7 +21,6 @@ type Config struct {
 	Port         string
 	DatabaseURL  string
 	GeminiAPIKey string
-	GeminiModel  string
 	MaxEvents    int
 }
 
@@ -30,17 +29,17 @@ func loadConfig() Config {
 		Port:         common.GetenvOrDefault("PORT", "8080"),
 		DatabaseURL:  common.RequireEnv("DATABASE_URL"),
 		GeminiAPIKey: os.Getenv("GEMINI_API_KEY"),
-		GeminiModel:  common.GetenvOrDefault("GEMINI_MODEL", "gemini-3-flash-preview"),
 		MaxEvents:    common.GetenvOrDefaultInt("ANALYZER_MAX_EVENTS", "100"),
 	}
 }
 
 // Server state
 type Server struct {
-	cfg   Config
-	ready atomic.Bool
-	db    *pgxpool.Pool
-	genai *genai.Client
+	cfg     Config
+	ready   atomic.Bool
+	db      *pgxpool.Pool
+	genai   *genai.Client
+	prompts *PromptLibrary
 }
 
 func main() {
@@ -59,15 +58,26 @@ func main() {
 	s.db = db
 	s.ready.Store(true)
 
+	prompts, err := NewPromptLibrary(promptsFS)
+	if err != nil {
+		slog.Error("failed to load prompts", "error", err)
+		os.Exit(1)
+	}
+	s.prompts = prompts
+
 	if s.cfg.GeminiAPIKey != "" {
-		config := genai.ClientConfig{APIKey: s.cfg.GeminiAPIKey}
+		httpLogger := slog.Default().With("component", "genai_http")
+		config := genai.ClientConfig{
+			APIKey:     s.cfg.GeminiAPIKey,
+			HTTPClient: newLoggingHTTPClient(httpLogger),
+		}
 		client, err := genai.NewClient(context.Background(), &config)
 		if err != nil {
 			slog.Error("failed to create gemini client", "error", err)
 			os.Exit(1)
 		}
 		s.genai = client
-		slog.Info("gemini client initialized", "model", s.cfg.GeminiModel)
+		slog.Info("google genai client initialized")
 	} else {
 		slog.Warn("GEMINI_API_KEY not set, analysis will return a mock response")
 	}
@@ -119,4 +129,53 @@ func (s *Server) handleReady(c echo.Context) error {
 	}
 
 	return c.NoContent(http.StatusOK)
+}
+
+func newLoggingHTTPClient(logger *slog.Logger) *http.Client {
+	// TODO: instrument the genai client with prometheus metrics as well
+	return &http.Client{
+		Transport: &loggingRoundTripper{
+			base:   http.DefaultTransport,
+			logger: logger,
+		},
+	}
+}
+
+type loggingRoundTripper struct {
+	base   http.RoundTripper
+	logger *slog.Logger
+}
+
+func (l *loggingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	base := l.base
+	if base == nil {
+		base = http.DefaultTransport
+	}
+
+	if l.logger == nil {
+		return base.RoundTrip(req)
+	}
+
+	start := time.Now()
+	resp, err := base.RoundTrip(req)
+	latency := time.Since(start)
+	if err != nil {
+		l.logger.Warn("genai http request failed",
+			"method", req.Method,
+			"host", req.URL.Host,
+			"path", req.URL.Path,
+			"latency", latency,
+			"error", err,
+		)
+		return resp, err
+	}
+
+	l.logger.Debug("genai http request",
+		"method", req.Method,
+		"host", req.URL.Host,
+		"path", req.URL.Path,
+		"status", resp.StatusCode,
+		"latency", latency,
+	)
+	return resp, err
 }

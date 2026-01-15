@@ -50,7 +50,6 @@ analyzer:
     annotations: {}
   # override after deployment with `kubectl set env deployment/lea-analyzer GEMINI_API_KEY=<secret-key>`
   geminiApiKey: ""
-  geminiModel: "gemini-3-flash-preview"
   maxEvents: 100
   resources: {}
   env:

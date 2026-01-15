@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math/rand"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/andreionoie/llm-event-analysis/pkg/common"
 	"github.com/labstack/echo/v4"
@@ -86,47 +84,27 @@ func (s *Server) analyzeWithLLM(ctx context.Context, question string, eventList 
 		return fmt.Sprintf("Analyzed %d events. (LLM unavailable)", len(eventList)), 0, nil
 	}
 
-	prompt := renderPrompt(question, eventList)
-	slog.Info("calling LLM", "model", s.cfg.GeminiModel, "events", len(eventList))
+	if s.prompts == nil {
+		return "", 0, fmt.Errorf("prompt library not configured")
+	}
 
-	resp, err := s.genai.Models.GenerateContent(ctx, s.cfg.GeminiModel, genai.Text(prompt), nil)
+	prompt, err := s.prompts.RenderAnalyzePrompt(question, eventList)
+	if err != nil {
+		return "", 0, err
+	}
+
+	genaiConfig := &genai.GenerateContentConfig{}
+	prompt.Config.ApplyTo(genaiConfig)
+	if prompt.System != "" {
+		genaiConfig.SystemInstruction = genai.NewContentFromText(prompt.System, genai.RoleUser)
+	}
+
+	slog.Info("calling LLM", "model", prompt.Config.Model, "events", len(eventList))
+
+	resp, err := s.genai.Models.GenerateContent(ctx, prompt.Config.Model, genai.Text(prompt.User), genaiConfig)
 	if err != nil {
 		return "", 0, err
 	}
 
 	return strings.TrimSpace(resp.Text()), 0, nil
-}
-
-func renderPrompt(question string, eventList []common.Event) string {
-	var b strings.Builder
-	b.WriteString("Answer the question using only the events provided. If the answer is not supported, say so.\n\n")
-	b.WriteString("Events:\n")
-	for _, e := range eventList {
-		b.WriteString("- [")
-		b.WriteString(e.Timestamp.Format(time.RFC3339))
-		b.WriteString("] ")
-		b.WriteString(e.Severity.String())
-		b.WriteString(" | ")
-		b.WriteString(e.Source)
-		b.WriteString(" | ")
-		b.WriteString(e.Type)
-		b.WriteString(" | ")
-		b.WriteString(truncatePayload(e.Payload, 200))
-		b.WriteString("\n")
-	}
-	b.WriteString("\nQuestion:\n")
-	b.WriteString(question)
-	return b.String()
-}
-
-func truncatePayload(payload map[string]any, maxLen int) string {
-	if len(payload) == 0 {
-		return "{}"
-	}
-	data, _ := json.Marshal(payload)
-	s := string(data)
-	if len(s) > maxLen {
-		return s[:maxLen-3] + "..."
-	}
-	return s
 }
