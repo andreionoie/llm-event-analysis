@@ -10,7 +10,7 @@ import (
 
 func (s *Server) fetchEvents(ctx context.Context, timeRange *common.TimeRange, limit int) ([]common.Event, error) {
 	query := `SELECT id, timestamp, source, severity, event_type, payload FROM events`
-	args := []any{}
+	var args []any
 
 	if timeRange != nil {
 		query += ` WHERE timestamp >= $1 AND timestamp <= $2`
@@ -48,7 +48,7 @@ func (s *Server) fetchEvents(ctx context.Context, timeRange *common.TimeRange, l
 
 func (s *Server) fetchSummaries(ctx context.Context, timeRange *common.TimeRange, limit int) ([]common.EventSummary, error) {
 	query := `SELECT bucket_start, bucket_end, total_count, by_severity, by_type, sample_events FROM event_summaries`
-	args := []any{}
+	var args []any
 
 	if timeRange != nil {
 		query += ` WHERE bucket_start >= $1 AND bucket_start <= $2`
