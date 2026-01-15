@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  detect-modules:
+  detect-go-modules:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
@@ -22,10 +22,11 @@ jobs:
           MODULES=$(find . -name "go.mod" -not -path "./vendor/*" -exec dirname {} \; | jq -R -s -c 'split("\n")[:-1]')
           echo "matrix=$MODULES" >> $GITHUB_OUTPUT
 
-  lint:
-    needs: detect-modules
+  golangci-lint:
+    needs: detect-go-modules
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false  # don't cancel other modules linting if one fails
       matrix:
         module: ${{ fromJson(needs.detect-modules.outputs.matrix) }}
     steps:
