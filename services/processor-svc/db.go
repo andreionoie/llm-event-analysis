@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math/rand"
 	"time"
 
 	"github.com/andreionoie/llm-event-analysis/pkg/common"
@@ -78,7 +79,7 @@ func (s *Server) updateSummary(ctx context.Context, event *common.Event) error {
 	bucketEnd := bucketStart.Add(s.cfg.SummaryBucket)
 
 	var lastErr error
-	for attempt := 0; attempt < summaryUpdateMaxAttempts; attempt++ {
+	for range summaryUpdateMaxAttempts {
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -104,7 +105,11 @@ func (s *Server) updateSummaryAttempt(ctx context.Context, event *common.Event, 
 	if err != nil {
 		return false, err
 	}
-	defer tx.Rollback(ctx)
+	defer func(tx pgx.Tx, ctx context.Context) {
+		if err := tx.Rollback(ctx); err != nil {
+			slog.Error("failed to rollback the transaction", "error", err)
+		}
+	}(tx, ctx)
 
 	var totalCount int
 	var bySevJSON []byte
@@ -162,7 +167,7 @@ func (s *Server) updateSummaryAttempt(ctx context.Context, event *common.Event, 
 		return false, err
 	}
 
-	totalCount++
+	totalCount += 1
 
 	var bySeverity map[string]int
 	if err := json.Unmarshal(bySevJSON, &bySeverity); err != nil {
@@ -171,7 +176,7 @@ func (s *Server) updateSummaryAttempt(ctx context.Context, event *common.Event, 
 	if bySeverity == nil {
 		bySeverity = make(map[string]int)
 	}
-	bySeverity[event.Severity.String()]++
+	bySeverity[event.Severity.String()] += 1
 
 	var byType map[string]int
 	if err := json.Unmarshal(byTypeJSON, &byType); err != nil {
@@ -180,7 +185,7 @@ func (s *Server) updateSummaryAttempt(ctx context.Context, event *common.Event, 
 	if byType == nil {
 		byType = make(map[string]int)
 	}
-	byType[event.Type]++
+	byType[event.Type] += 1
 
 	var samples []common.Event
 	if err := json.Unmarshal(samplesJSON, &samples); err != nil {
@@ -188,6 +193,12 @@ func (s *Server) updateSummaryAttempt(ctx context.Context, event *common.Event, 
 	}
 	if len(samples) < summarySampleLimit {
 		samples = append(samples, *event)
+	} else {
+		// swap out a random existing event
+		i := rand.Intn(totalCount)
+		if i < summarySampleLimit {
+			samples[i] = *event
+		}
 	}
 
 	bySevJSON, err = json.Marshal(bySeverity)

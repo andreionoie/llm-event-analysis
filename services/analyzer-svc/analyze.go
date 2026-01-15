@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -13,6 +14,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"google.golang.org/genai"
 )
+
+const eventsSampleLimit = 5
 
 type AnalyzeRequest struct {
 	Question  string            `json:"question"`
@@ -60,9 +63,14 @@ func (s *Server) handleAnalyze(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "analysis failed")
 	}
 
-	sampleIDs := make([]string, 0, min(5, len(events)))
-	for i := 0; i < min(5, len(events)); i++ {
-		sampleIDs = append(sampleIDs, events[i].Id)
+	samplesCount := min(eventsSampleLimit, len(events))
+	sampleIDs := make([]string, samplesCount)
+	// randomize samples
+	rand.Shuffle(len(events), func(i, j int) {
+		events[i], events[j] = events[j], events[i]
+	})
+	for i := range samplesCount {
+		sampleIDs[i] = events[i].Id
 	}
 
 	return c.JSON(http.StatusOK, AnalyzeResponse{

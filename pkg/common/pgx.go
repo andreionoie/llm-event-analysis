@@ -10,7 +10,7 @@ import (
 
 func ConnectPGXPoolWithRetry(ctx context.Context, databaseURL string, logLevel string, attempts int, delay time.Duration) (*pgxpool.Pool, error) {
 	var lastErr error
-	for i := 0; i < attempts; i++ {
+	for range attempts {
 		db, err := ConnectPGXPool(ctx, databaseURL, logLevel)
 		if err == nil {
 			return db, nil
