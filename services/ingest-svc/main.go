@@ -68,6 +68,7 @@ func main() {
 
 	// endpoints
 	e.POST("/events", s.handleIngest)
+	e.POST("/events/batch", s.handleIngestBatch)
 
 	echoErrChan := make(chan error, 1)
 	go func() {

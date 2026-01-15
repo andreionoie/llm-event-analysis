@@ -35,3 +35,35 @@ Content-Type: application/json
     "severity": "high"
   }
 }
+
+### Batch event ingestion
+POST http://{{host}}/events/batch
+Content-Type: application/json
+
+{
+  "events": [
+    {
+      "source": "win32-kernel-sensor",
+      "severity": "info",
+      "type": "detection",
+      "payload": {
+        "event_type": "ScheduledTaskCreated",
+        "task_name": "UpdaterTask",
+        "host": "WIN-7Q3P9M2Q",
+        "username": "CORP\\\\bryan2b"
+      }
+    },
+    {
+      "source": "win32-kernel-sensor",
+      "severity": "high",
+      "type": "detection",
+      "payload": {
+        "event_type": "CredentialDumpingAttempt",
+        "process_name": "procdump.exe",
+        "sha256": "4d5b1f52d3f9a6456f1d71cd2c57b437d52b6a2d2c5f9b744e7e4d529c2d4c88",
+        "tactic": "Credential Access",
+        "technique": "T1003 - OS Credential Dumping"
+      }
+    }
+  ]
+}
