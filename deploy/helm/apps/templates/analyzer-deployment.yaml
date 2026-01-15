@@ -30,8 +30,6 @@ spec:
               value: "{{ .Values.analyzer.containerPort }}"
             - name: ANALYZER_MAX_EVENTS
               value: "{{ .Values.analyzer.maxEvents }}"
-            - name: GEMINI_MODEL
-              value: "{{ .Values.analyzer.geminiModel }}"
             - name: DATABASE_URL
               value: "{{ .Values.global.database.url }}"
 {{- if .Values.analyzer.geminiApiKey }}

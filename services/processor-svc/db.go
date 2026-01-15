@@ -85,12 +85,10 @@ func (s *Server) updateSummary(ctx context.Context, event *common.Event) error {
 		}
 
 		retry, err := s.updateSummaryAttempt(ctx, event, bucketStart, bucketEnd)
-		if err == nil {
-			return nil
-		}
-		if !retry {
+		if err == nil || !retry {
 			return err
 		}
+	
 		lastErr = err
 	}
 
@@ -156,11 +154,7 @@ func (s *Server) updateSummaryAttempt(ctx context.Context, event *common.Event, 
 				samplesJSON,
 			)
 			if err != nil {
-				var pgErr *pgconn.PgError
-				if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-					return true, err
-				}
-				return false, err
+				return isUniqueConstraintViolation(err), err
 			}
 			return false, tx.Commit(ctx)
 		}
@@ -235,4 +229,9 @@ func (s *Server) updateSummaryAttempt(ctx context.Context, event *common.Event, 
 	}
 
 	return false, tx.Commit(ctx)
+}
+
+func isUniqueConstraintViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
