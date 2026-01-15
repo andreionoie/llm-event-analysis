@@ -15,26 +15,9 @@ import (
 )
 
 type AnalyzeRequest struct {
-	Question  string     `json:"question"`
-	MaxEvents int        `json:"max_events,omitempty"`
-	TimeRange *TimeRange `json:"time_range,omitempty"`
-}
-
-type TimeRange struct {
-	Start time.Time `json:"start"`
-	End   time.Time `json:"end"`
-}
-
-func (r *TimeRange) Validate() error {
-	if r.Start.IsZero() || r.End.IsZero() {
-		return fmt.Errorf("time range must include start and end")
-	}
-
-	if r.Start.After(r.End) {
-		return fmt.Errorf("start time must be before end time")
-	}
-
-	return nil
+	Question  string            `json:"question"`
+	MaxEvents int               `json:"max_events,omitempty"`
+	TimeRange *common.TimeRange `json:"time_range,omitempty"`
 }
 
 type AnalyzeResponse struct {

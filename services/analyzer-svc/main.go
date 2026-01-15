@@ -75,6 +75,8 @@ func main() {
 	e := echo.New()
 	common.SetupEchoDefaults(e, "analyzer-svc", s.handleHealth, s.handleReady)
 	e.POST("/analyze", s.handleAnalyze)
+	e.GET("/events", s.handleEvents)
+	e.GET("/summaries", s.handleSummaries)
 
 	echoErrChan := make(chan error, 1)
 	go func() {
