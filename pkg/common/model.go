@@ -71,3 +71,29 @@ func randomHexStr(len int) string {
 	}
 	return hex.EncodeToString(key)
 }
+
+type EventSummary struct {
+	BucketStart  time.Time      `json:"bucket_start"`
+	BucketEnd    time.Time      `json:"bucket_end"`
+	TotalCount   int            `json:"total_count"`
+	BySeverity   map[string]int `json:"by_severity"`
+	ByType       map[string]int `json:"by_type"`
+	SampleEvents []Event        `json:"sample_events,omitempty"`
+}
+
+type TimeRange struct {
+	Start time.Time `json:"start"`
+	End   time.Time `json:"end"`
+}
+
+func (r *TimeRange) Validate() error {
+	if r.Start.IsZero() || r.End.IsZero() {
+		return fmt.Errorf("time range must include start and end")
+	}
+
+	if r.Start.After(r.End) {
+		return fmt.Errorf("start time must be before end time")
+	}
+
+	return nil
+}

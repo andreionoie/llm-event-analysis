@@ -25,3 +25,9 @@ Content-Type: application/json
   },
   "max_events": 50
 }
+
+### Query events
+GET http://{{host}}/events?start=2026-01-01T00:00:00Z&end=2027-01-01T00:00:00Z&limit=10
+
+### Query summaries
+GET http://{{host}}/summaries?start=2026-01-01T00:00:00Z&end=2027-01-01T00:00:00Z&limit=5

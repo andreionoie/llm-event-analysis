@@ -23,6 +23,7 @@ type Config struct {
 	KafkaTopic         string
 	KafkaConsumerGroup string
 	DatabaseURL        string
+	SummaryBucket      time.Duration
 }
 
 func loadConfig() Config {
@@ -32,6 +33,7 @@ func loadConfig() Config {
 		KafkaTopic:         common.RequireEnv("KAFKA_TOPIC"),
 		KafkaConsumerGroup: common.GetenvOrDefault("KAFKA_CONSUMER_GROUP", "processor-svc"),
 		DatabaseURL:        common.RequireEnv("DATABASE_URL"),
+		SummaryBucket:      time.Second * time.Duration(common.GetenvOrDefaultInt("SUMMARY_BUCKET_SECONDS", "300")),
 	}
 }
 
