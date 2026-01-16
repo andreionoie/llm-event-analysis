@@ -29,6 +29,7 @@ type Config struct {
 }
 
 func loadConfig() Config {
+	// TODO: config validation, os.Exit on failure
 	return Config{
 		Port:               common.GetenvOrDefault("PORT", "8080"),
 		KafkaBrokers:       common.SplitCommaSeparated(common.RequireEnv("KAFKA_BROKERS")),

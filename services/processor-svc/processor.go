@@ -54,6 +54,7 @@ func (s *Server) decodeEvent(record *kgo.Record) *common.Event {
 		return nil
 	}
 
+	// TODO: assign deterministic hashed ID instead of random inside Enrich()
 	event.Enrich()
 	if err := event.Validate(); err != nil {
 		slog.Warn("invalid event", "error", err, "event_id", event.Id, "topic", record.Topic, "partition", record.Partition, "offset", record.Offset)
@@ -64,20 +65,8 @@ func (s *Server) decodeEvent(record *kgo.Record) *common.Event {
 }
 
 func (s *Server) processBatches(ctx context.Context, batchCh <-chan batchItem) {
-	if s.cfg.BatchSize <= 0 {
-		slog.Warn("invalid batch size, falling back to 1", "batch_size", s.cfg.BatchSize)
-		s.cfg.BatchSize = 1
-	}
-	if s.cfg.FlushInterval <= 0 {
-		slog.Warn("invalid flush interval, falling back to 500ms", "flush_interval", s.cfg.FlushInterval)
-		s.cfg.FlushInterval = 500 * time.Millisecond
-	}
-
 	batch := make([]batchItem, 0, s.cfg.BatchSize)
-	ticker := time.NewTicker(s.cfg.FlushInterval)
-	defer ticker.Stop()
-
-	flush := func() {
+	flushBatchToDB := func() {
 		if len(batch) == 0 {
 			return
 		}
@@ -126,9 +115,28 @@ func (s *Server) processBatches(ctx context.Context, batchCh <-chan batchItem) {
 		batch = batch[:0]
 	}
 
+	ticker := time.NewTicker(s.cfg.FlushInterval)
+	defer ticker.Stop()
 	for {
 		select {
+		case item, ok := <-batchCh:
+			// flush and quit when channel got closed
+			if !ok {
+				flushBatchToDB()
+				return
+			}
+			// flush if we reached target batch size
+			batch = append(batch, item)
+			if len(batch) >= s.cfg.BatchSize {
+				flushBatchToDB()
+			}
+
+		case <-ticker.C:
+			// flush periodically even if target batch size hasn't been reached
+			flushBatchToDB()
+
 		case <-ctx.Done():
+			// drain the batch on shutdown and flush
 			drain := true
 			for drain {
 				select {
@@ -138,19 +146,8 @@ func (s *Server) processBatches(ctx context.Context, batchCh <-chan batchItem) {
 					drain = false
 				}
 			}
-			flush()
+			flushBatchToDB()
 			return
-		case item, ok := <-batchCh:
-			if !ok {
-				flush()
-				return
-			}
-			batch = append(batch, item)
-			if len(batch) >= s.cfg.BatchSize {
-				flush()
-			}
-		case <-ticker.C:
-			flush()
 		}
 	}
 }
