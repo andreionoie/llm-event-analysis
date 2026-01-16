@@ -89,6 +89,7 @@ func (s *Server) publishToDLQ(ctx context.Context, record *kgo.Record, reason st
 			)
 			return
 		}
+		dlqMessagesTotal.WithLabelValues(reason).Inc()
 		slog.Debug("message sent to DLQ",
 			"reason", reason,
 			"original_offset", record.Offset,
@@ -96,6 +97,4 @@ func (s *Server) publishToDLQ(ctx context.Context, record *kgo.Record, reason st
 			"dlq_offset", r.Offset,
 		)
 	})
-
-	dlqMessagesTotal.WithLabelValues(reason).Inc()
 }
