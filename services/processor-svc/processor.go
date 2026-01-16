@@ -22,12 +22,6 @@ func (s *Server) consume(ctx context.Context, batchCh chan<- batchItem) {
 		if fetches.IsClientClosed() {
 			return
 		}
-		if err := fetches.Err0(); err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, kgo.ErrClientClosed) {
-				return
-			}
-			slog.Warn("kafka fetch error", "error", err)
-		}
 
 		fetches.EachError(func(topic string, partition int32, err error) {
 			if errors.Is(err, context.Canceled) || errors.Is(err, kgo.ErrClientClosed) {
@@ -43,6 +37,7 @@ func (s *Server) consume(ctx context.Context, batchCh chan<- batchItem) {
 				record: record,
 				event:  s.decodeEvent(record),
 			}
+			// TODO: producer to a DLQ topic for failed events
 			select {
 			case batchCh <- item:
 			case <-ctx.Done():
@@ -97,12 +92,17 @@ func (s *Server) processBatches(ctx context.Context, batchCh <-chan batchItem) {
 		}
 
 		if err := s.insertEventsBatch(ctx, events); err != nil {
+			// reprocess the records since we haven't committed anything yet
+			// insertEventsBatch will automatically fallback to row-by-row insert if it fails
 			slog.Error("failed to write event batch", "error", err, "count", len(events))
 			return
 		}
 
 		if err := s.consumer.CommitRecords(ctx, records...); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("failed to commit batch offsets", "error", err, "count", len(records))
+			// clear the batch; on reprocessing the records, we will fallback to row-by-row insert
+			// which ensures exactly once semantics via `ON CONFLICT (id) DO NOTHING`
+			batch = batch[:0]
 			return
 		}
 
@@ -110,7 +110,7 @@ func (s *Server) processBatches(ctx context.Context, batchCh <-chan batchItem) {
 			if item.event == nil {
 				continue
 			}
-			slog.Info(
+			slog.Debug(
 				"processed event",
 				"event_id", item.event.Id,
 				"source", item.event.Source,
