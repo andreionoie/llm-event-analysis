@@ -150,6 +150,7 @@ func (s *Server) handleGetTriageJob(c echo.Context) error {
 	if cached.Status == "pending" && time.Since(cached.CreatedAt) > triageJobTimeout {
 		cached.Status = "failed"
 		cached.Error = "job timed out"
+		_ = s.cacheTriageJob(c.Request().Context(), cached, triageResultsCacheKey(cached.TimeRange))
 	}
 
 	return c.JSON(http.StatusOK, cached)
@@ -222,10 +223,6 @@ func (s *Server) runTriageTier1(ctx context.Context, timeRange common.TimeRange)
 		validBuckets[sum.BucketStart.Format(time.RFC3339)] = true
 	}
 
-	if s.genai == nil {
-		return &Tier1Result{Summary: fmt.Sprintf("Analyzed %d buckets (LLM unavailable)", len(summaries))}, validBuckets, nil
-	}
-
 	prompt, err := s.prompts.RenderTier1TriagingPrompt(summaries)
 	if err != nil {
 		return nil, nil, err
@@ -273,13 +270,6 @@ func (s *Server) runTriageTier2(ctx context.Context, flagged []BucketRisk) ([]Tr
 
 	if len(allEvents) == 0 {
 		return nil, nil, nil
-	}
-
-	if s.genai == nil {
-		return []TriageFinding{{
-			Priority: "N/A",
-			Summary:  fmt.Sprintf("Scanned %d events (LLM unavailable)", len(allEvents)),
-		}}, allIDs, nil
 	}
 
 	prompt, err := s.prompts.RenderTier2TriagingPrompt(allEvents)

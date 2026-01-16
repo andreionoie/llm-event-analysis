@@ -97,7 +97,7 @@ func main() {
 		slog.Info("google genai client initialized")
 		s.genaiCircuitBreaker = gobreaker.NewCircuitBreaker[*genai.GenerateContentResponse](gobreaker.Settings{
 			Name:    "genai-client",
-			Timeout: 60,
+			Timeout: 60 * time.Second,
 			OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
 				slog.Debug("circuit breaker state change", "name", name, "from", from, "to", to)
 			},

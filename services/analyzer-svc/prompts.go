@@ -281,6 +281,10 @@ func (s *Server) generateContent(ctx context.Context, prompt *PromptPair) (strin
 }
 
 func (s *Server) generateContentWithSchema(ctx context.Context, prompt *PromptPair, schema *genai.Schema) (string, error) {
+	if s.genai == nil {
+		return "(LLM unavailable; please configure your GEMINI_API_KEY env variable)", nil
+	}
+
 	genaiConfig := &genai.GenerateContentConfig{}
 	prompt.Config.ApplyTo(genaiConfig)
 	if prompt.System != "" {
