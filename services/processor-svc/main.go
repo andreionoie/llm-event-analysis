@@ -21,6 +21,7 @@ type Config struct {
 	Port               string
 	KafkaBrokers       []string
 	KafkaTopic         string
+	DLQTopic           string
 	KafkaConsumerGroup string
 	DatabaseURL        string
 	SummaryBucket      time.Duration
@@ -34,6 +35,7 @@ func loadConfig() Config {
 		Port:               common.GetenvOrDefault("PORT", "8080"),
 		KafkaBrokers:       common.SplitCommaSeparated(common.RequireEnv("KAFKA_BROKERS")),
 		KafkaTopic:         common.RequireEnv("KAFKA_TOPIC"),
+		DLQTopic:           common.GetenvOrDefault("KAFKA_DLQ_TOPIC", ""),
 		KafkaConsumerGroup: common.GetenvOrDefault("KAFKA_CONSUMER_GROUP", "processor-svc"),
 		DatabaseURL:        common.RequireEnv("DATABASE_URL"),
 		SummaryBucket:      time.Second * time.Duration(common.GetenvOrDefaultInt("SUMMARY_BUCKET_SECONDS", "300")),
@@ -44,10 +46,11 @@ func loadConfig() Config {
 
 // Server state
 type Server struct {
-	cfg      Config
-	ready    atomic.Bool
-	consumer *kgo.Client
-	db       *pgxpool.Pool
+	cfg         Config
+	ready       atomic.Bool
+	consumer    *kgo.Client
+	dlqProducer *kgo.Client
+	db          *pgxpool.Pool
 }
 
 func main() {
@@ -109,6 +112,23 @@ func main() {
 	defer consumer.Close()
 
 	s.consumer = consumer
+
+	if s.cfg.DLQTopic == "" {
+		slog.Warn("DLQ topic not configured, poison messages will be logged only")
+	} else {
+		dlqProducer, err := kgo.NewClient(
+			kgo.SeedBrokers(s.cfg.KafkaBrokers...),
+			kgo.WithLogger(common.NewKgoSlogLogger(slog.Default().With("component", "kafka-dlq"), kafkaLogLevel)),
+		)
+		if err != nil {
+			slog.Error("failed to create DLQ producer", "error", err)
+		} else {
+			defer dlqProducer.Close()
+			s.dlqProducer = dlqProducer
+			slog.Info("DLQ producer initialized", "topic", s.cfg.DLQTopic)
+		}
+	}
+
 	kafkaCtx, kafkaCancel := context.WithCancel(context.Background())
 	batchCh := make(chan batchItem, s.cfg.BatchSize*2)
 	go s.processBatches(kafkaCtx, batchCh)

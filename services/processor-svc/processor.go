@@ -33,11 +33,15 @@ func (s *Server) consume(ctx context.Context, batchCh chan<- batchItem) {
 		iter := fetches.RecordIter()
 		for !iter.Done() {
 			record := iter.Next()
+			event, dlqReason, dlqErr := s.decodeEvent(record)
+			if dlqReason != "" {
+				s.publishToDLQ(ctx, record, dlqReason, dlqErr)
+				// not skipping sending the event to the channel, since we want its offset to be committed on the topic and not retried
+			}
 			item := batchItem{
 				record: record,
-				event:  s.decodeEvent(record),
+				event:  event,
 			}
-			// TODO: producer to a DLQ topic for failed events
 			select {
 			case batchCh <- item:
 			case <-ctx.Done():
@@ -47,21 +51,23 @@ func (s *Server) consume(ctx context.Context, batchCh chan<- batchItem) {
 	}
 }
 
-func (s *Server) decodeEvent(record *kgo.Record) *common.Event {
+// decodeEvent parses and validates a Kafka record into an Event.
+// Returns (event, "", nil) on success, or (nil, reason, error) for DLQ routing.
+func (s *Server) decodeEvent(record *kgo.Record) (*common.Event, string, error) {
 	var event common.Event
 	if err := json.Unmarshal(record.Value, &event); err != nil {
 		slog.Warn("failed to decode event", "error", err, "topic", record.Topic, "partition", record.Partition, "offset", record.Offset)
-		return nil
+		return nil, DLQReasonUnmarshalFailed, err
 	}
 
 	// TODO: assign deterministic hashed ID instead of random inside Enrich()
 	event.Enrich()
 	if err := event.Validate(); err != nil {
 		slog.Warn("invalid event", "error", err, "event_id", event.Id, "topic", record.Topic, "partition", record.Partition, "offset", record.Offset)
-		return nil
+		return nil, DLQReasonValidationFailed, err
 	}
 
-	return &event
+	return &event, "", nil
 }
 
 func (s *Server) processBatches(ctx context.Context, batchCh <-chan batchItem) {
