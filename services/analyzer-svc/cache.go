@@ -12,10 +12,11 @@ import (
 
 const defaultCacheTTL = 30 * time.Minute
 
-func generateCacheKey(req AnalyzeRequest) string {
+func computeCacheKey(req AnalyzeRequest) string {
 	str, err := json.Marshal(req)
 	if err != nil {
-		panic(err)
+		slog.Debug("failed to marshal request for cache key computation", "error", err, "request", req)
+		return ""
 	}
 	hashBytes := sha256.Sum256(str)
 	hashStr := hex.EncodeToString(hashBytes[:])
@@ -24,7 +25,12 @@ func generateCacheKey(req AnalyzeRequest) string {
 }
 
 func (s *Server) getCachedAnalyzeResponse(ctx context.Context, req AnalyzeRequest) *AnalyzeResponse {
-	cachedRaw, err := s.cache.Get(ctx, generateCacheKey(req)).Result()
+	key := computeCacheKey(req)
+	if key == "" {
+		return nil
+	}
+
+	cachedRaw, err := s.cache.Get(ctx, key).Result()
 	if err != nil {
 		slog.Debug("cache miss", "error", err)
 		return nil
@@ -43,8 +49,15 @@ func (s *Server) cacheAnalyzeResponse(ctx context.Context, req AnalyzeRequest, r
 	val, err := json.Marshal(resp)
 	if err != nil {
 		slog.Debug("failed to marshal response for caching", "error", err, "response", resp)
+		return
 	}
-	err = s.cache.Set(ctx, generateCacheKey(req), val, defaultCacheTTL).Err()
+
+	key := computeCacheKey(req)
+	if key == "" {
+		return
+	}
+
+	err = s.cache.Set(ctx, key, val, defaultCacheTTL).Err()
 	if err != nil {
 		slog.Debug("failed to cache response", "error", err, "response", resp)
 	}

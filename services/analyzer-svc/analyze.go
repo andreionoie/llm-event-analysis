@@ -46,6 +46,7 @@ func (s *Server) handleAnalyze(c echo.Context) error {
 	ctx := c.Request().Context()
 
 	if cached := s.getCachedAnalyzeResponse(ctx, req); cached != nil {
+		cached.Cached = true
 		return c.JSON(http.StatusOK, *cached)
 	}
 

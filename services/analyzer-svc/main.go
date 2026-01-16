@@ -68,6 +68,7 @@ func main() {
 			slog.Error("failed to close redis client", "error", err)
 		}
 	}(rdb)
+	// Since cache is just an optimization, we do not verify connection on startup for simplicity
 	s.cache = rdb
 
 	s.ready.Store(true)
