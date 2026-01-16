@@ -24,9 +24,12 @@ type Config struct {
 	KafkaConsumerGroup string
 	DatabaseURL        string
 	SummaryBucket      time.Duration
+	BatchSize          int
+	FlushInterval      time.Duration
 }
 
 func loadConfig() Config {
+	// TODO: config validation, os.Exit on failure
 	return Config{
 		Port:               common.GetenvOrDefault("PORT", "8080"),
 		KafkaBrokers:       common.SplitCommaSeparated(common.RequireEnv("KAFKA_BROKERS")),
@@ -34,6 +37,8 @@ func loadConfig() Config {
 		KafkaConsumerGroup: common.GetenvOrDefault("KAFKA_CONSUMER_GROUP", "processor-svc"),
 		DatabaseURL:        common.RequireEnv("DATABASE_URL"),
 		SummaryBucket:      time.Second * time.Duration(common.GetenvOrDefaultInt("SUMMARY_BUCKET_SECONDS", "300")),
+		BatchSize:          common.GetenvOrDefaultInt("PROCESSOR_BATCH_SIZE", "100"),
+		FlushInterval:      time.Millisecond * time.Duration(common.GetenvOrDefaultInt("PROCESSOR_FLUSH_INTERVAL_MS", "500")),
 	}
 }
 
@@ -105,7 +110,9 @@ func main() {
 
 	s.consumer = consumer
 	kafkaCtx, kafkaCancel := context.WithCancel(context.Background())
-	go s.consume(kafkaCtx)
+	batchCh := make(chan batchItem, s.cfg.BatchSize*2)
+	go s.processBatches(kafkaCtx, batchCh)
+	go s.consume(kafkaCtx, batchCh)
 
 	e := echo.New()
 	common.SetupEchoDefaults(e, "processor-svc", s.handleHealth, s.handleReady)

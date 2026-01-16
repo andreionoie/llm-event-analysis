@@ -5,22 +5,22 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"time"
 
 	"github.com/andreionoie/llm-event-analysis/pkg/common"
 	"github.com/twmb/franz-go/pkg/kgo"
 )
 
-func (s *Server) consume(ctx context.Context) {
+type batchItem struct {
+	record *kgo.Record
+	event  *common.Event
+}
+
+func (s *Server) consume(ctx context.Context, batchCh chan<- batchItem) {
 	for {
 		fetches := s.consumer.PollFetches(ctx)
 		if fetches.IsClientClosed() {
 			return
-		}
-		if err := fetches.Err0(); err != nil {
-			if errors.Is(err, context.Canceled) || errors.Is(err, kgo.ErrClientClosed) {
-				return
-			}
-			slog.Warn("kafka fetch error", "error", err)
 		}
 
 		fetches.EachError(func(topic string, partition int32, err error) {
@@ -33,54 +33,121 @@ func (s *Server) consume(ctx context.Context) {
 		iter := fetches.RecordIter()
 		for !iter.Done() {
 			record := iter.Next()
-			if !s.handleRecord(ctx, record) {
-				break
+			item := batchItem{
+				record: record,
+				event:  s.decodeEvent(record),
 			}
-			if err := s.consumer.CommitRecords(ctx, record); err != nil {
-				if !errors.Is(err, context.Canceled) {
-					slog.Error("failed to commit offset", "error", err, "topic", record.Topic, "partition", record.Partition, "offset", record.Offset)
-				}
-				break
+			// TODO: producer to a DLQ topic for failed events
+			select {
+			case batchCh <- item:
+			case <-ctx.Done():
+				return
 			}
 		}
 	}
 }
 
-func (s *Server) handleRecord(ctx context.Context, record *kgo.Record) bool {
+func (s *Server) decodeEvent(record *kgo.Record) *common.Event {
 	var event common.Event
 	if err := json.Unmarshal(record.Value, &event); err != nil {
 		slog.Warn("failed to decode event", "error", err, "topic", record.Topic, "partition", record.Partition, "offset", record.Offset)
-		return true
+		return nil
 	}
 
+	// TODO: assign deterministic hashed ID instead of random inside Enrich()
 	event.Enrich()
 	if err := event.Validate(); err != nil {
 		slog.Warn("invalid event", "error", err, "event_id", event.Id, "topic", record.Topic, "partition", record.Partition, "offset", record.Offset)
-		return true
+		return nil
 	}
 
-	if err := s.insertEvent(ctx, &event); err != nil {
-		slog.Error(
-			"failed to insert event",
-			"error", err,
-			"event_id", event.Id,
-			"topic", record.Topic,
-			"partition", record.Partition,
-			"offset", record.Offset,
-		)
-		return false
+	return &event
+}
+
+func (s *Server) processBatches(ctx context.Context, batchCh <-chan batchItem) {
+	batch := make([]batchItem, 0, s.cfg.BatchSize)
+	flushBatchToDB := func() {
+		if len(batch) == 0 {
+			return
+		}
+
+		events := make([]*common.Event, 0, len(batch))
+		records := make([]*kgo.Record, 0, len(batch))
+		for _, item := range batch {
+			records = append(records, item.record)
+			if item.event != nil {
+				events = append(events, item.event)
+			}
+		}
+
+		if err := s.insertEventsBatch(ctx, events); err != nil {
+			// reprocess the records since we haven't committed anything yet
+			// insertEventsBatch will automatically fallback to row-by-row insert if it fails
+			slog.Error("failed to write event batch", "error", err, "count", len(events))
+			return
+		}
+
+		if err := s.consumer.CommitRecords(ctx, records...); err != nil && !errors.Is(err, context.Canceled) {
+			slog.Error("failed to commit batch offsets", "error", err, "count", len(records))
+			// clear the batch; on reprocessing the records, we will fallback to row-by-row insert
+			// which ensures idempotent processing via `ON CONFLICT (id) DO NOTHING`
+			batch = batch[:0]
+			return
+		}
+
+		for _, item := range batch {
+			if item.event == nil {
+				continue
+			}
+			slog.Debug(
+				"processed event",
+				"event_id", item.event.Id,
+				"source", item.event.Source,
+				"severity", item.event.Severity.String(),
+				"type", item.event.Type,
+				"timestamp", item.event.Timestamp,
+				"topic", item.record.Topic,
+				"partition", item.record.Partition,
+				"offset", item.record.Offset,
+			)
+		}
+
+		batch = batch[:0]
 	}
 
-	slog.Info(
-		"processed event",
-		"event_id", event.Id,
-		"source", event.Source,
-		"severity", event.Severity.String(),
-		"type", event.Type,
-		"timestamp", event.Timestamp,
-		"topic", record.Topic,
-		"partition", record.Partition,
-		"offset", record.Offset,
-	)
-	return true
+	ticker := time.NewTicker(s.cfg.FlushInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case item, ok := <-batchCh:
+			// flush and quit when channel got closed
+			if !ok {
+				flushBatchToDB()
+				return
+			}
+			// flush if we reached target batch size
+			batch = append(batch, item)
+			if len(batch) >= s.cfg.BatchSize {
+				flushBatchToDB()
+			}
+
+		case <-ticker.C:
+			// flush periodically even if target batch size hasn't been reached
+			flushBatchToDB()
+
+		case <-ctx.Done():
+			// drain the batch on shutdown and flush
+			drain := true
+			for drain {
+				select {
+				case item := <-batchCh:
+					batch = append(batch, item)
+				default:
+					drain = false
+				}
+			}
+			flushBatchToDB()
+			return
+		}
+	}
 }

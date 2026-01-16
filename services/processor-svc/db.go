@@ -67,6 +67,60 @@ func (s *Server) insertEvent(ctx context.Context, event *common.Event) error {
 	return nil
 }
 
+func (s *Server) insertEventsBatch(ctx context.Context, events []*common.Event) error {
+	if s.db == nil {
+		return errors.New("database not configured")
+	}
+	if len(events) == 0 {
+		return nil
+	}
+
+	rows := make([][]any, 0, len(events))
+	for _, event := range events {
+		payloadJSON := []byte("{}")
+		if event.Payload != nil {
+			var err error
+			payloadJSON, err = json.Marshal(event.Payload)
+			if err != nil {
+				return err
+			}
+		}
+
+		rows = append(rows, []any{
+			event.Id,
+			event.Timestamp,
+			event.Source,
+			int(event.Severity),
+			event.Type,
+			payloadJSON,
+		})
+	}
+
+	columns := []string{"id", "timestamp", "source", "severity", "event_type", "payload"}
+	_, err := s.db.CopyFrom(ctx, pgx.Identifier{"events"}, columns, pgx.CopyFromRows(rows))
+	if err != nil {
+		slog.Warn("CopyFrom failed, falling back to row inserts", "error", err, "count", len(events))
+		return s.insertEventsFallback(ctx, events)
+	}
+
+	for _, event := range events {
+		if err := s.updateSummary(ctx, event); err != nil {
+			slog.Error("failed to update event summary", "error", err, "event_id", event.Id)
+		}
+	}
+
+	return nil
+}
+
+func (s *Server) insertEventsFallback(ctx context.Context, events []*common.Event) error {
+	for _, event := range events {
+		if err := s.insertEvent(ctx, event); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Server) updateSummary(ctx context.Context, event *common.Event) error {
 	if s.db == nil {
 		return errors.New("database not configured")
@@ -88,7 +142,7 @@ func (s *Server) updateSummary(ctx context.Context, event *common.Event) error {
 		if err == nil || !retry {
 			return err
 		}
-	
+
 		lastErr = err
 	}
 
