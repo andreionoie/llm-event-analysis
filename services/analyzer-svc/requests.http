@@ -31,3 +31,18 @@ GET http://{{host}}/events?start=2026-01-01T00:00:00Z&end=2027-01-01T00:00:00Z&l
 
 ### Query summaries
 GET http://{{host}}/summaries?start=2026-01-01T00:00:00Z&end=2027-01-01T00:00:00Z&limit=5
+
+### Submit triage job
+POST http://{{host}}/triage/jobs
+Content-Type: application/json
+
+{
+  "time_range": {
+    "start": "2026-01-01T00:00:00Z",
+    "end": "2027-01-01T00:00:00Z"
+  }
+}
+
+### Get triage job status (replace job_id with response from submit)
+@job_id = 54bcf520-b331-4a8e-b458-f29af5f76531
+GET http://{{host}}/triage/jobs/{{job_id}}

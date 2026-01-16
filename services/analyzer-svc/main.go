@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
+	"github.com/sony/gobreaker/v2"
 	"google.golang.org/genai"
 )
 
@@ -38,12 +39,13 @@ func loadConfig() Config {
 
 // Server state
 type Server struct {
-	cfg     Config
-	ready   atomic.Bool
-	db      *pgxpool.Pool
-	cache   *redis.Client
-	genai   *genai.Client
-	prompts *PromptLibrary
+	cfg                 Config
+	ready               atomic.Bool
+	db                  *pgxpool.Pool
+	cache               *redis.Client
+	genai               *genai.Client
+	genaiCircuitBreaker *gobreaker.CircuitBreaker[*genai.GenerateContentResponse]
+	prompts             *PromptLibrary
 }
 
 func main() {
@@ -93,6 +95,15 @@ func main() {
 		}
 		s.genai = client
 		slog.Info("google genai client initialized")
+		s.genaiCircuitBreaker = gobreaker.NewCircuitBreaker[*genai.GenerateContentResponse](gobreaker.Settings{
+			Name:    "genai-client",
+			Timeout: 60 * time.Second,
+			OnStateChange: func(name string, from gobreaker.State, to gobreaker.State) {
+				slog.Debug("circuit breaker state change", "name", name, "from", from, "to", to)
+			},
+			IsSuccessful: nil,
+			IsExcluded:   nil,
+		})
 	} else {
 		slog.Warn("GEMINI_API_KEY not set, analysis will return a mock response")
 	}
@@ -102,6 +113,8 @@ func main() {
 	e.POST("/analyze", s.handleAnalyze)
 	e.GET("/events", s.handleEvents)
 	e.GET("/summaries", s.handleSummaries)
+	e.POST("/triage/jobs", s.handleCreateTriageJob)
+	e.GET("/triage/jobs/:id", s.handleGetTriageJob)
 
 	echoErrChan := make(chan error, 1)
 	go func() {
