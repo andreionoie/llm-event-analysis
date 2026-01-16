@@ -112,3 +112,13 @@ postgresql:
         memory: 512Mi
   metrics:
     enabled: false
+
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  architecture: standalone
+  image:
+    registry: docker.io
+    repository: bitnami/redis
+    tag: latest

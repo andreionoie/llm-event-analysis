@@ -20,3 +20,8 @@ dependencies:
     version: "~18"
     repository: https://charts.bitnami.com/bitnami
     condition: postgresql.enabled
+    
+  - name: redis
+    version: "~24"
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled
