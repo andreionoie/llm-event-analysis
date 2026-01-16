@@ -43,12 +43,17 @@ func (s *Server) handleAnalyze(c echo.Context) error {
 		}
 	}
 
+	ctx := c.Request().Context()
+
+	if cached := s.getCachedAnalyzeResponse(ctx, req); cached != nil {
+		return c.JSON(http.StatusOK, *cached)
+	}
+
 	maxEvents := req.MaxEvents
 	if maxEvents <= 0 || maxEvents > s.cfg.MaxEvents {
 		maxEvents = s.cfg.MaxEvents
 	}
 
-	ctx := c.Request().Context()
 	events, err := s.fetchEvents(ctx, req.TimeRange, maxEvents)
 	if err != nil {
 		slog.Error("failed to fetch events", "error", err)
@@ -71,12 +76,16 @@ func (s *Server) handleAnalyze(c echo.Context) error {
 		sampleIDs[i] = events[i].Id
 	}
 
-	return c.JSON(http.StatusOK, AnalyzeResponse{
+	resp := AnalyzeResponse{
 		Answer:       answer,
 		EventsUsed:   len(events),
 		TokensUsed:   tokensUsed,
 		SampleEvents: sampleIDs,
-	})
+	}
+
+	s.cacheAnalyzeResponse(ctx, req, resp)
+
+	return c.JSON(http.StatusOK, resp)
 }
 
 func (s *Server) analyzeWithLLM(ctx context.Context, question string, eventList []common.Event) (string, int, error) {

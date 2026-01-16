@@ -10,6 +10,8 @@ global:
       dlq: "events.dlq"
   database:
     url: "postgres://app:apppassword@lea-infra-postgresql.default.svc.cluster.local:5432/appdb?sslmode=disable"
+  redis:
+    addr: "lea-infra-redis-master.default.svc.cluster.local:6379"
 
 ingest:
   replicaCount: 1

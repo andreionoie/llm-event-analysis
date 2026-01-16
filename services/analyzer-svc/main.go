@@ -14,12 +14,14 @@ import (
 	"github.com/andreionoie/llm-event-analysis/pkg/common"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
+	"github.com/redis/go-redis/v9"
 	"google.golang.org/genai"
 )
 
 type Config struct {
 	Port         string
 	DatabaseURL  string
+	RedisAddr    string
 	GeminiAPIKey string
 	MaxEvents    int
 }
@@ -28,6 +30,7 @@ func loadConfig() Config {
 	return Config{
 		Port:         common.GetenvOrDefault("PORT", "8080"),
 		DatabaseURL:  common.RequireEnv("DATABASE_URL"),
+		RedisAddr:    common.RequireEnv("REDIS_ADDR"),
 		GeminiAPIKey: os.Getenv("GEMINI_API_KEY"),
 		MaxEvents:    common.GetenvOrDefaultInt("ANALYZER_MAX_EVENTS", "100"),
 	}
@@ -38,6 +41,7 @@ type Server struct {
 	cfg     Config
 	ready   atomic.Bool
 	db      *pgxpool.Pool
+	cache   *redis.Client
 	genai   *genai.Client
 	prompts *PromptLibrary
 }
@@ -56,6 +60,16 @@ func main() {
 	}
 	defer db.Close()
 	s.db = db
+
+	rdb := redis.NewClient(&redis.Options{Addr: s.cfg.RedisAddr})
+	defer func(rdb *redis.Client) {
+		err := rdb.Close()
+		if err != nil {
+			slog.Error("failed to close redis client", "error", err)
+		}
+	}(rdb)
+	s.cache = rdb
+
 	s.ready.Store(true)
 
 	prompts, err := NewPromptLibrary(promptsFS)

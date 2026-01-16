@@ -32,6 +32,8 @@ spec:
               value: "{{ .Values.analyzer.maxEvents }}"
             - name: DATABASE_URL
               value: "{{ .Values.global.database.url }}"
+            - name: REDIS_ADDR
+              value: "{{ .Values.global.redis.addr }}"
 {{- if .Values.analyzer.geminiApiKey }}
             - name: GEMINI_API_KEY
               value: "{{ .Values.analyzer.geminiApiKey }}"
