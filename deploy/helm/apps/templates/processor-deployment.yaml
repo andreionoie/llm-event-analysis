@@ -32,6 +32,8 @@ spec:
               value: "{{ .Values.global.kafka.brokers }}"
             - name: KAFKA_TOPIC
               value: "{{ .Values.global.kafka.topics.raw }}"
+            - name: KAFKA_DLQ_TOPIC
+              value: "{{ .Values.global.kafka.topics.dlq }}"
             - name: KAFKA_CONSUMER_GROUP
               value: "{{ .Values.processor.kafkaConsumerGroup }}"
             - name: DATABASE_URL
