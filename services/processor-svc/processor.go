@@ -101,7 +101,7 @@ func (s *Server) processBatches(ctx context.Context, batchCh <-chan batchItem) {
 		if err := s.consumer.CommitRecords(ctx, records...); err != nil && !errors.Is(err, context.Canceled) {
 			slog.Error("failed to commit batch offsets", "error", err, "count", len(records))
 			// clear the batch; on reprocessing the records, we will fallback to row-by-row insert
-			// which ensures exactly once semantics via `ON CONFLICT (id) DO NOTHING`
+			// which ensures idempotent processing via `ON CONFLICT (id) DO NOTHING`
 			batch = batch[:0]
 			return
 		}
