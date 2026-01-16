@@ -1,8 +1,6 @@
 package main
 
 import (
-	"context"
-	"fmt"
 	"log/slog"
 	"math/rand"
 	"net/http"
@@ -10,7 +8,6 @@ import (
 
 	"github.com/andreionoie/llm-event-analysis/pkg/common"
 	"github.com/labstack/echo/v4"
-	"google.golang.org/genai"
 )
 
 const eventsSampleLimit = 5
@@ -24,7 +21,6 @@ type AnalyzeRequest struct {
 type AnalyzeResponse struct {
 	Answer       string   `json:"answer"`
 	EventsUsed   int      `json:"events_used"`
-	TokensUsed   int      `json:"tokens_used,omitempty"`
 	Cached       bool     `json:"cached,omitempty"`
 	SampleEvents []string `json:"sample_events,omitempty"`
 }
@@ -61,7 +57,13 @@ func (s *Server) handleAnalyze(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusInternalServerError, "failed to fetch events")
 	}
 
-	answer, tokensUsed, err := s.analyzeWithLLM(ctx, req.Question, events)
+	prompt, err := s.prompts.RenderAnalyzePrompt(req.Question, events)
+	if err != nil {
+		slog.Error("analysis failed", "error", err)
+		return echo.NewHTTPError(http.StatusInternalServerError, "analysis failed")
+	}
+
+	answer, err := s.generateContent(ctx, prompt)
 	if err != nil {
 		slog.Error("analysis failed", "error", err)
 		return echo.NewHTTPError(http.StatusInternalServerError, "analysis failed")
@@ -80,41 +82,10 @@ func (s *Server) handleAnalyze(c echo.Context) error {
 	resp := AnalyzeResponse{
 		Answer:       answer,
 		EventsUsed:   len(events),
-		TokensUsed:   tokensUsed,
 		SampleEvents: sampleIDs,
 	}
 
 	s.cacheAnalyzeResponse(ctx, req, resp)
 
 	return c.JSON(http.StatusOK, resp)
-}
-
-func (s *Server) analyzeWithLLM(ctx context.Context, question string, eventList []common.Event) (string, int, error) {
-	if s.genai == nil {
-		return fmt.Sprintf("Analyzed %d events. (LLM unavailable)", len(eventList)), 0, nil
-	}
-
-	if s.prompts == nil {
-		return "", 0, fmt.Errorf("prompt library not configured")
-	}
-
-	prompt, err := s.prompts.RenderAnalyzePrompt(question, eventList)
-	if err != nil {
-		return "", 0, err
-	}
-
-	genaiConfig := &genai.GenerateContentConfig{}
-	prompt.Config.ApplyTo(genaiConfig)
-	if prompt.System != "" {
-		genaiConfig.SystemInstruction = genai.NewContentFromText(prompt.System, genai.RoleUser)
-	}
-
-	slog.Info("calling LLM", "model", prompt.Config.Model, "events", len(eventList))
-
-	resp, err := s.genai.Models.GenerateContent(ctx, prompt.Config.Model, genai.Text(prompt.User), genaiConfig)
-	if err != nil {
-		return "", 0, err
-	}
-
-	return strings.TrimSpace(resp.Text()), 0, nil
 }

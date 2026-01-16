@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -59,7 +60,9 @@ type PromptInput struct {
 }
 
 type PromptLibrary struct {
-	Analyze *PromptTemplate
+	Analyze       *PromptTemplate
+	Tier1Triaging *PromptTemplate
+	Tier2Triaging *PromptTemplate
 }
 
 type PromptData struct {
@@ -80,8 +83,20 @@ func NewPromptLibrary(fsys fs.FS) (*PromptLibrary, error) {
 		return nil, err
 	}
 
+	tier1, err := loadPromptTemplate(fsys, "prompts/triage_tier1.md")
+	if err != nil {
+		return nil, err
+	}
+
+	tier2, err := loadPromptTemplate(fsys, "prompts/triage_tier2.md")
+	if err != nil {
+		return nil, err
+	}
+
 	return &PromptLibrary{
-		Analyze: analyze,
+		Analyze:       analyze,
+		Tier1Triaging: tier1,
+		Tier2Triaging: tier2,
 	}, nil
 }
 
@@ -99,10 +114,29 @@ func (p *PromptLibrary) RenderAnalyzePrompt(question string, eventList []common.
 	return renderPromptPair(p.Analyze, data)
 }
 
+func (p *PromptLibrary) RenderTier1TriagingPrompt(summaries []common.EventSummary) (*PromptPair, error) {
+	if p == nil || p.Tier1Triaging == nil {
+		return nil, fmt.Errorf("tier1 prompt not loaded")
+	}
+	data := struct{ Summaries []common.EventSummary }{Summaries: summaries}
+	return renderPromptPairAny(p.Tier1Triaging, data)
+}
+
+func (p *PromptLibrary) RenderTier2TriagingPrompt(events []common.Event) (*PromptPair, error) {
+	if p == nil || p.Tier2Triaging == nil {
+		return nil, fmt.Errorf("tier2 prompt not loaded")
+	}
+	data := struct{ Events []common.Event }{Events: events}
+	return renderPromptPairAny(p.Tier2Triaging, data)
+}
+
 func renderPromptPair(prompt *PromptTemplate, data PromptData) (*PromptPair, error) {
+	return renderPromptPairAny(prompt, data)
+}
+
+func renderPromptPairAny(prompt *PromptTemplate, data any) (*PromptPair, error) {
 	var systemBuf, userBuf bytes.Buffer
 
-	// letting the system prompt be optional
 	if prompt.Template.Lookup("system") != nil {
 		if err := prompt.Template.ExecuteTemplate(&systemBuf, "system", data); err != nil {
 			return nil, fmt.Errorf("render system prompt: %w", err)
@@ -113,13 +147,11 @@ func renderPromptPair(prompt *PromptTemplate, data PromptData) (*PromptPair, err
 		return nil, fmt.Errorf("render user prompt: %w", err)
 	}
 
-	pair := &PromptPair{
+	return &PromptPair{
 		System: strings.TrimSpace(systemBuf.String()),
 		User:   strings.TrimSpace(userBuf.String()),
 		Config: prompt.Config,
-	}
-
-	return pair, nil
+	}, nil
 }
 
 func selectPromptEvents(eventList []common.Event, limit int) ([]common.Event, int) {
@@ -242,4 +274,33 @@ func truncateString(value string, maxLen int) string {
 		return value
 	}
 	return value[:maxLen-3] + "..."
+}
+
+func (s *Server) generateContent(ctx context.Context, prompt *PromptPair) (string, error) {
+	return s.generateContentWithSchema(ctx, prompt, nil)
+}
+
+func (s *Server) generateContentWithSchema(ctx context.Context, prompt *PromptPair, schema *genai.Schema) (string, error) {
+	genaiConfig := &genai.GenerateContentConfig{}
+	prompt.Config.ApplyTo(genaiConfig)
+	if prompt.System != "" {
+		genaiConfig.SystemInstruction = genai.NewContentFromText(prompt.System, genai.RoleUser)
+	}
+
+	if schema != nil {
+		genaiConfig.ResponseMIMEType = "application/json"
+		genaiConfig.ResponseSchema = schema
+	}
+
+	slog.Debug("calling LLM", "model", prompt.Config.Model, "structured", schema != nil, "prompt", prompt.User)
+
+	resp, err := s.genaiCircuitBreaker.Execute(func() (*genai.GenerateContentResponse, error) {
+		return s.genai.Models.GenerateContent(ctx, prompt.Config.Model, genai.Text(prompt.User), genaiConfig)
+	})
+	if err != nil {
+		return "", err
+	}
+	slog.Debug("LLM responded", "model", prompt.Config.Model, "structured", schema != nil, "body", resp.Text())
+
+	return strings.TrimSpace(resp.Text()), nil
 }
