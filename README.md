@@ -24,3 +24,16 @@ curl http://lea-analyzer.default.svc.cluster.local/triage/jobs \
   -H "Content-Type: application/json" \
   --data '{"time_range": {"start": "2026-01-01T00:00:00Z", "end": "2026-01-02T00:00:00Z"}}'
 ```
+
+## Design notes
+The **analyze** flow enriches a preset prompt with event data from the DB and appends a natural language question from the user.
+
+The **triage** flow runs in two passes (tiers). First pass fetches a sequence of 5-min summary buckets, and prompts 
+the LLM to flag the high-risk ones (reducing overall token costs). Second pass fetches raw events only for flagged 
+buckets and prompts the LLM to classify them.
+
+LLM output is validated against DB. Non-existent IDs are dropped, preventing errors due to hallucination.
+
+LLM responses are cached in redis, keyed by a deterministic request hash.
+
+The processor service handles "poison" messages by routing to a DLQ with base64'd payload.

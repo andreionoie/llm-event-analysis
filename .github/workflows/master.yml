@@ -42,3 +42,28 @@ jobs:
         with:
           version: latest
           working-directory: ${{ matrix.module }}
+
+  go-test:
+    needs: detect-go-modules
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module: ${{ fromJson(needs.detect-go-modules.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Run tests
+        working-directory: ${{ matrix.module }}
+        run: go test -v -coverprofile=coverage.out ./...
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ hashFiles(format('{0}/go.mod', matrix.module)) }}
+          path: ${{ matrix.module }}/coverage.out
+          retention-days: 7
