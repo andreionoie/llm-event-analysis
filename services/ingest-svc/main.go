@@ -15,8 +15,10 @@ import (
 
 	"github.com/andreionoie/llm-event-analysis/pkg/common"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/twmb/franz-go/pkg/kgo"
 	"github.com/twmb/franz-go/pkg/kmsg"
+	"golang.org/x/time/rate"
 )
 
 type Config struct {
@@ -65,7 +67,22 @@ func main() {
 
 	e := echo.New()
 	common.SetupEchoDefaults(e, "ingest-svc", s.handleHealth, s.handleReady)
-
+	// in-memory IP addr-based rate limiter: https://echo.labstack.com/docs/middleware/rate-limiter
+	e.Use(middleware.RateLimiterWithConfig(middleware.RateLimiterConfig{
+		Skipper: middleware.DefaultSkipper,
+		Store: middleware.NewRateLimiterMemoryStoreWithConfig(
+			middleware.RateLimiterMemoryStoreConfig{Rate: rate.Limit(50), Burst: 100, ExpiresIn: 3 * time.Minute},
+		),
+		IdentifierExtractor: func(ctx echo.Context) (string, error) {
+			return ctx.RealIP(), nil
+		},
+		ErrorHandler: func(context echo.Context, err error) error {
+			return context.JSON(http.StatusForbidden, nil)
+		},
+		DenyHandler: func(context echo.Context, identifier string, err error) error {
+			return context.JSON(http.StatusTooManyRequests, nil)
+		},
+	}))
 	// endpoints
 	e.POST("/events", s.handleIngest)
 	e.POST("/events/batch", s.handleIngestBatch)
